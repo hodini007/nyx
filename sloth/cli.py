@@ -2,17 +2,21 @@ import argparse
 import sys
 from pathlib import Path
 
+from .analyzer import ModelUnavailable, OllamaClient, analyze_screenshots, load_categories
+from .db import open_db
 from .executor import apply_plan, undo_last
 from .planner import build_plan
 from .safety import SANDBOX, UnsafePath, ensure_root
 from .scanner import scan
+from .search import ask
 
 DEFAULT_ROOT = SANDBOX / "Downloads"
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="sloth", description="Tidy a sandbox folder. Never deletes, always undoable.")
-    p.add_argument("command", choices=["plan", "apply", "undo"])
+    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask"])
+    p.add_argument("query", nargs="*", help="search words for the ask command")
     p.add_argument("--root", default=str(DEFAULT_ROOT), help="folder inside the playground sandbox")
     p.add_argument("--min-age-hours", type=float, default=24.0, help="skip files modified more recently than this")
     args = p.parse_args(argv)
@@ -27,8 +31,31 @@ def main(argv=None) -> int:
         print(f"Restored {undo_last(root)} file(s).")
         return 0
 
+    if args.command == "ask":
+        results = ask(open_db(root), " ".join(args.query))
+        for path, cat, desc in results:
+            print(f"{path.relative_to(root)}  [{cat}]  {desc}")
+        if not results:
+            print("No matches. Run 'analyze' first so screenshots have descriptions.")
+        return 0
+
     files, skipped = scan(root, args.min_age_hours)
-    moves = build_plan(root, files)
+    db = open_db(root)
+
+    if args.command == "analyze":
+        client = OllamaClient()
+        if not client.available():
+            print(f"Local model '{client.model}' not reachable. Install Ollama and run: ollama pull {client.model}", file=sys.stderr)
+            return 3
+        try:
+            n = analyze_screenshots(db, files, client)
+        except ModelUnavailable as e:
+            print(e, file=sys.stderr)
+            return 3
+        print(f"Analyzed {n} new screenshot(s); the rest were cached.")
+        return 0
+
+    moves = build_plan(root, files, load_categories(db))
     for m in moves:
         print(f"{m.src.relative_to(root)}  ->  {m.dst.relative_to(root)}   ({m.reason})")
     for s in skipped:

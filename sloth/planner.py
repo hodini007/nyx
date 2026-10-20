@@ -14,7 +14,7 @@ class Move:
     reason: str
 
 
-def build_plan(root: Path, files: list[FileInfo]) -> list[Move]:
+def build_plan(root: Path, files: list[FileInfo], analysis: dict[str, str] | None = None) -> list[Move]:
     moves: list[Move] = []
     handled: set[Path] = set()
 
@@ -33,7 +33,9 @@ def build_plan(root: Path, files: list[FileInfo]) -> list[Move]:
         if f.path in handled:
             continue
         cat = category_for(f)
-        moves.append(Move(f.path, root / cat / f.name, f"sorted as {cat}"))
+        sub = (analysis or {}).get(f.sha256) if cat == "Screenshots" else None
+        dst = root / cat / sub.capitalize() / f.name if sub else root / cat / f.name
+        moves.append(Move(f.path, dst, f"sorted as {cat}" + (f" ({sub}, by model)" if sub else "")))
 
     return moves
 

@@ -1,22 +1,11 @@
 import shutil
-import sqlite3
 import time
 import uuid
 from pathlib import Path
 
+from .db import open_db
 from .planner import Move, unique_dst
 from .safety import ensure_inside
-
-
-def open_db(root: Path) -> sqlite3.Connection:
-    d = root / ".sloth"
-    d.mkdir(exist_ok=True)
-    db = sqlite3.connect(d / "sloth.db")
-    db.execute(
-        "CREATE TABLE IF NOT EXISTS moves (id INTEGER PRIMARY KEY, batch TEXT, src TEXT, dst TEXT,"
-        " reason TEXT, ts REAL, undone INTEGER DEFAULT 0)"
-    )
-    return db
 
 
 def apply_plan(root: Path, moves: list[Move]) -> str:
@@ -33,6 +22,7 @@ def apply_plan(root: Path, moves: list[Move]) -> str:
             "INSERT INTO moves (batch, src, dst, reason, ts) VALUES (?,?,?,?,?)",
             (batch, str(src), str(dst), m.reason, time.time()),
         )
+        db.execute("UPDATE analysis SET path=? WHERE path=?", (str(dst), str(src)))
     db.commit()
     return batch
 
@@ -49,6 +39,7 @@ def undo_last(root: Path) -> int:
         if d.exists() and not s.exists():
             shutil.move(str(d), str(s))
             restored += 1
+            db.execute("UPDATE analysis SET path=? WHERE path=?", (str(s), str(d)))
         db.execute("UPDATE moves SET undone=1 WHERE id=?", (mid,))
         parent = d.parent
         while parent != root and parent.is_relative_to(root) and parent.exists() and not any(parent.iterdir()):
