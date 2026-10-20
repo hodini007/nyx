@@ -8,7 +8,8 @@ _MARKERS = re.compile(r"[\s_-]*(final|latest|new|old|draft)", re.I)
 _VERSION = re.compile(r"[\s_-]*v?(\d+(?:\.\d+){1,3})$|[\s_-]*v(\d+)", re.I)
 
 CATEGORIES = {
-    "Installers": {".exe", ".msi", ".dmg", ".pkg", ".deb", ".rpm", ".appimage"},
+    "Installers": {".exe", ".msi", ".dmg", ".pkg", ".deb", ".rpm", ".appimage", ".apk", ".oxt", ".xpi", ".vsix", ".run"},
+    "Code": {".py", ".ipynb", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".sh", ".ino", ".ps1"},
     "Archives": {".zip", ".tar", ".gz", ".7z", ".rar", ".tgz"},
     "Images": {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"},
     "Documents": {".pdf", ".doc", ".docx", ".txt", ".md", ".odt", ".rtf"},
