@@ -47,12 +47,12 @@ def check_folder(path: Path) -> Path:
     p = Path(path).expanduser().resolve()
     if not p.is_dir():
         raise UnsafePath(f"Not a folder: {p}")
-    if not os.access(p, os.R_OK | os.W_OK | os.X_OK):
-        raise UnsafePath(f"Nyx needs read and write access to {p}")
     if not p.is_relative_to(SANDBOX):
         reason = forbidden_reason(p)
         if reason:
             raise UnsafePath(f"Refusing {p}: {reason}.")
+    if not os.access(p, os.R_OK | os.W_OK | os.X_OK):
+        raise UnsafePath(f"Nyx needs read and write access to {p}")
     return p
 
 

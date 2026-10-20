@@ -1,6 +1,6 @@
 import hashlib
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -13,7 +13,21 @@ class FileInfo:
     path: Path
     size: int
     mtime: float
-    sha256: str
+    sha: str | None = None
+    cache: object = field(default=None, repr=False, compare=False)
+
+    @property
+    def sha256(self) -> str:
+        """Content hash, computed only when needed and remembered in the cache."""
+        if self.sha is None:
+            key = (str(self.path), self.size, self.mtime)
+            found = self.cache.get(key) if self.cache is not None else None
+            if found is None:
+                found = hash_file(self.path)
+                if self.cache is not None:
+                    self.cache[key] = found
+            self.sha = found
+        return self.sha
 
     @property
     def name(self) -> str:
@@ -40,12 +54,5 @@ def scan(root: Path, min_age_hours: float = 24.0, hash_cache: dict | None = None
         if st.st_mtime > cutoff:
             skipped.append(p)
             continue
-        key = (str(p), st.st_size, st.st_mtime)
-        if hash_cache is not None and key in hash_cache:
-            digest = hash_cache[key]
-        else:
-            digest = hash_file(p)
-            if hash_cache is not None:
-                hash_cache[key] = digest
-        files.append(FileInfo(p, st.st_size, st.st_mtime, digest))
+        files.append(FileInfo(p, st.st_size, st.st_mtime, None, hash_cache))
     return files, skipped

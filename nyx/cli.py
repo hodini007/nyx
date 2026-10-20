@@ -163,8 +163,12 @@ def main(argv=None) -> int:
     if args.command == "folders":
         return folders_command(args)
     if args.command == "gui":
-        from .gui import run_gui
-
+        try:
+            from .gui import run_gui
+        except ImportError:
+            print("The control panel needs Tkinter. On Ubuntu/Debian: sudo apt install python3-tk "
+                  "(Windows and macOS Python installers include it).", file=sys.stderr)
+            return 1
         return run_gui()
 
     ov = overrides(args)

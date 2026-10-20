@@ -2,7 +2,7 @@ import time
 from pathlib import Path
 
 from .analyzer import ModelUnavailable, OllamaClient, analyze_screenshots, load_categories
-from .db import open_db
+from .db import DbHashCache, open_db
 from .executor import apply_plan
 from .lock import FileLock
 from .idle import in_window, machine_idle, user_idle_seconds
@@ -35,7 +35,7 @@ def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window:
 
     try:
         learn_from_corrections(root, db)
-        files, _ = scan(root, min_age_hours)
+        files, _ = scan(root, min_age_hours, DbHashCache(db))
         known = {r[0] for r in db.execute("SELECT sha256 FROM analysis")}
         pending_shots = [f for f in files if category_for(f) == "Screenshots" and f.sha256 not in known]
         planned = build_plan(root, files, load_categories(db), load_rules(db))

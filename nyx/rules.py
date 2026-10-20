@@ -52,9 +52,15 @@ def version_key(info: FileInfo) -> tuple:
 
 def find_duplicates(files: list[FileInfo]) -> list[tuple[FileInfo, list[FileInfo]]]:
     """(keeper, extras) for each set of identical content. Keeper = cleanest name, then oldest."""
-    by_hash: dict[str, list[FileInfo]] = defaultdict(list)
+    by_size: dict[int, list[FileInfo]] = defaultdict(list)
     for f in files:
-        by_hash[f.sha256].append(f)
+        if f.size > 0:
+            by_size[f.size].append(f)
+    by_hash: dict[str, list[FileInfo]] = defaultdict(list)
+    for same_size in by_size.values():
+        if len(same_size) > 1:
+            for f in same_size:
+                by_hash[f.sha256].append(f)
     out = []
     for group in by_hash.values():
         if len(group) < 2:
