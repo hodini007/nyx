@@ -3,11 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sloth.changes import summarize_change
-from sloth.db import init_db
-from sloth.learn import learn_from_corrections, load_rules
-from sloth.planner import build_plan
-from sloth.scanner import FileInfo
+from nyx.changes import summarize_change
+from nyx.db import init_db
+from nyx.learn import learn_from_corrections, load_rules
+from nyx.planner import build_plan
+from nyx.scanner import FileInfo
 
 
 class LearnTests(unittest.TestCase):

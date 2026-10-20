@@ -1,4 +1,4 @@
-# Sloth: a local agent that tidies your Downloads and screenshots
+# Nyx: a local agent that tidies your Downloads and screenshots
 
 Hacktoberfest 2026 Open-Source AI Challenge, Week 3 ("Slow and Steady").
 Deadline: **October 25, 11:59 PM PDT**.
@@ -54,7 +54,7 @@ watcher / nightly schedule
 ```
 Suggested layout:
 ```
-sloth/
+nyx/
   cli.py          # scan, plan, apply, undo, ask, report
   scanner.py      # walk folders, hash, index
   rules.py        # duplicates, version grouping, type sorting

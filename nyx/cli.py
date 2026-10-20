@@ -16,7 +16,7 @@ DEFAULT_ROOT = SANDBOX / "Downloads"
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="sloth", description="Tidy a sandbox folder. Never deletes, always undoable.")
+    p = argparse.ArgumentParser(prog="nyx", description="Tidy a sandbox folder. Never deletes, always undoable.")
     p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn"])
     p.add_argument("query", nargs="*", help="search words for the ask command")
     p.add_argument("--root", default=str(DEFAULT_ROOT), help="folder inside the playground sandbox")

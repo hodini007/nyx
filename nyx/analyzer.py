@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from .rules import category_for
 from .scanner import FileInfo
 
-MODEL = os.environ.get("SLOTH_MODEL", "gemma3:4b")
+MODEL = os.environ.get("NYX_MODEL", "gemma3:4b")
 HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 LABELS = ["receipt", "error", "chat", "document", "code", "meme", "other"]
 PROMPT = (
@@ -28,7 +28,7 @@ def _local_url(host: str) -> str:
         host = "http://" + host
     parsed = urlparse(host)
     if parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
-        raise ModelUnavailable(f"Sloth only talks to a local model, refusing host {parsed.hostname}")
+        raise ModelUnavailable(f"Nyx only talks to a local model, refusing host {parsed.hostname}")
     return host.rstrip("/")
 
 

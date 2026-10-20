@@ -7,14 +7,14 @@ MIN_HITS = 2
 
 
 def learn_from_corrections(root: Path, db: sqlite3.Connection) -> int:
-    """If the user moved a file Sloth placed, remember where that extension should go."""
+    """If the user moved a file Nyx placed, remember where that extension should go."""
     learned = 0
     rows = db.execute("SELECT id, dst FROM moves WHERE undone=0 AND learned=0").fetchall()
     for mid, dst in rows:
         dst = Path(dst)
         if dst.exists():
             continue
-        matches = [p for p in root.rglob(dst.name) if p.is_file() and ".sloth" not in p.parts]
+        matches = [p for p in root.rglob(dst.name) if p.is_file() and ".nyx" not in p.parts]
         db.execute("UPDATE moves SET learned=1 WHERE id=?", (mid,))
         if len(matches) != 1:
             continue

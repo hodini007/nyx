@@ -3,20 +3,20 @@ import sys
 import unittest
 from pathlib import Path
 
-from sloth.rules import normalize
-from sloth.safety import SANDBOX, UnsafePath, ensure_root
+from nyx.rules import normalize
+from nyx.safety import SANDBOX, UnsafePath, ensure_root
 
 PROJECT = Path(__file__).resolve().parent.parent
 DOWNLOADS = SANDBOX / "Downloads"
 
 
 def run(*args):
-    return subprocess.run([sys.executable, "-m", "sloth.cli", *args], cwd=PROJECT, capture_output=True, text=True)
+    return subprocess.run([sys.executable, "-m", "nyx.cli", *args], cwd=PROJECT, capture_output=True, text=True)
 
 
 class SafetyTests(unittest.TestCase):
     def test_refuses_outside_sandbox(self):
-        for bad in ["/tmp", str(Path.home()), str(PROJECT), str(SANDBOX / ".." / "sloth")]:
+        for bad in ["/tmp", str(Path.home()), str(PROJECT), str(SANDBOX / ".." / "nyx")]:
             with self.assertRaises(UnsafePath):
                 ensure_root(Path(bad))
 

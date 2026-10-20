@@ -3,11 +3,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sloth.analyzer import ModelUnavailable, OllamaClient, analyze_screenshots, load_categories, parse_answer
-from sloth.db import init_db
-from sloth.planner import build_plan
-from sloth.scanner import FileInfo, hash_file
-from sloth.search import ask
+from nyx.analyzer import ModelUnavailable, OllamaClient, analyze_screenshots, load_categories, parse_answer
+from nyx.db import init_db
+from nyx.planner import build_plan
+from nyx.scanner import FileInfo, hash_file
+from nyx.search import ask
 
 
 class FakeModel:

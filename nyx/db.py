@@ -3,9 +3,9 @@ from pathlib import Path
 
 
 def open_db(root: Path) -> sqlite3.Connection:
-    d = root / ".sloth"
+    d = root / ".nyx"
     d.mkdir(exist_ok=True)
-    return init_db(sqlite3.connect(d / "sloth.db"))
+    return init_db(sqlite3.connect(d / "nyx.db"))
 
 
 def init_db(db: sqlite3.Connection) -> sqlite3.Connection:
