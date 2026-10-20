@@ -11,10 +11,11 @@ def open_db(root: Path) -> sqlite3.Connection:
 def init_db(db: sqlite3.Connection) -> sqlite3.Connection:
     db.execute(
         "CREATE TABLE IF NOT EXISTS moves (id INTEGER PRIMARY KEY, batch TEXT, src TEXT, dst TEXT,"
-        " reason TEXT, ts REAL, undone INTEGER DEFAULT 0)"
+        " reason TEXT, ts REAL, undone INTEGER DEFAULT 0, learned INTEGER DEFAULT 0)"
     )
     db.execute(
         "CREATE TABLE IF NOT EXISTS analysis (sha256 TEXT PRIMARY KEY, path TEXT, category TEXT,"
         " description TEXT, model TEXT, ts REAL)"
     )
+    db.execute("CREATE TABLE IF NOT EXISTS rules (ext TEXT PRIMARY KEY, folder TEXT, hits INTEGER)")
     return db

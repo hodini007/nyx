@@ -14,7 +14,8 @@ class Move:
     reason: str
 
 
-def build_plan(root: Path, files: list[FileInfo], analysis: dict[str, str] | None = None) -> list[Move]:
+def build_plan(root: Path, files: list[FileInfo], analysis: dict[str, str] | None = None,
+               rules: dict[str, str] | None = None) -> list[Move]:
     moves: list[Move] = []
     handled: set[Path] = set()
 
@@ -31,6 +32,10 @@ def build_plan(root: Path, files: list[FileInfo], analysis: dict[str, str] | Non
 
     for f in files:
         if f.path in handled:
+            continue
+        learned = (rules or {}).get(f.path.suffix.lower())
+        if learned:
+            moves.append(Move(f.path, root / learned / f.name, f"learned rule: {f.path.suffix.lower()} files go to {learned}"))
             continue
         cat = category_for(f)
         sub = (analysis or {}).get(f.sha256) if cat == "Screenshots" else None

@@ -63,6 +63,15 @@ class OllamaClient:
             raise ModelUnavailable(str(e)) from e
         return parse_answer(raw)
 
+    def generate_text(self, prompt: str) -> str:
+        body = json.dumps({"model": self.model, "prompt": prompt, "stream": False}).encode()
+        req = urllib.request.Request(self.host + "/api/generate", body, {"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=300) as r:
+                return json.load(r)["response"].strip()
+        except (urllib.error.URLError, OSError) as e:
+            raise ModelUnavailable(str(e)) from e
+
 
 def parse_answer(raw: str) -> dict:
     try:
