@@ -95,7 +95,7 @@ class TabPFNModel:
         return self.clf.predict_proba(np.asarray(X, dtype=float)).tolist(), list(self.clf.classes_)
 
 
-def predict_folders(root: Path, loose: list[FileInfo], now: float, factory=None, threshold: float = 0.75
+def predict_folders(root: Path, loose: list[FileInfo], now: float, factory=None, threshold: float = 0.70
                     ) -> dict[Path, tuple[str, float]]:
     """{file path: (folder name, confidence)} for loose files the model is confident about."""
     if not loose:

@@ -17,7 +17,7 @@ class Settings:
     effort: str = "full"
     run_on_battery: bool = False
     smart_sorting: bool = False
-    smart_threshold: float = 0.75
+    smart_threshold: float = 0.70
 
     def window(self) -> tuple[int, int]:
         return (self.night_start, self.night_end) if self.night_enabled else (0, 0)
