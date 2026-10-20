@@ -85,7 +85,7 @@ def parse_answer(raw: str) -> dict:
     }
 
 
-def analyze_screenshots(db: sqlite3.Connection, files: list[FileInfo], client) -> int:
+def analyze_screenshots(db: sqlite3.Connection, files: list[FileInfo], client, progress=None) -> int:
     """Classify screenshots not seen before (cached by content hash). Returns how many were newly analyzed."""
     done = 0
     for f in files:
@@ -101,6 +101,9 @@ def analyze_screenshots(db: sqlite3.Connection, files: list[FileInfo], client) -
             (f.sha256, str(f.path), result["category"], result["description"], getattr(client, "model", "?"), time.time()),
         )
         done += 1
+        db.commit()
+        if progress:
+            progress(done)
     db.commit()
     return done
 

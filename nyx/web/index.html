@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nyx</title>
+<style>
+:root {
+  --bg: #0e1020; --panel: #171a30; --panel2: #1f2340; --line: #2b3058; --text: #e8e9f5; --muted: #9a9dc0;
+  --accent: #8b8cff; --accent-ink: #12132a; --good: #5fd3a0; --warn: #f0b35a; --bad: #ef7a8a;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f4fb; --panel: #ffffff; --panel2: #ececf8; --line: #d9daee; --text: #1a1b33; --muted: #5d6090;
+    --accent: #5a5bd6; --accent-ink: #ffffff; --good: #178a5b; --warn: #a9690a; --bad: #c0344a;
+    color-scheme: light;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+h1 { margin: 0; font-size: 28px; letter-spacing: .5px; }
+h1 span { color: var(--accent); }
+.tag { color: var(--muted); font-size: 14px; }
+h2 { margin: 0 0 12px; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); font-weight: 600; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+.pill { display: inline-block; padding: 3px 10px; border-radius: 99px; font-size: 12px; border: 1px solid var(--line); background: var(--panel2); }
+.pill.good { color: var(--good); } .pill.warn { color: var(--warn); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.stat { background: var(--panel2); border-radius: 10px; padding: 12px 14px; }
+.stat b { display: block; font-size: 26px; }
+.stat small { color: var(--muted); }
+.cols { display: grid; grid-template-columns: 1fr 1.4fr; gap: 16px; }
+@media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+.list { max-height: 360px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; background: var(--panel2); }
+.list div { padding: 2px 0; word-break: break-all; }
+.folder { margin-top: 8px; font-weight: 600; color: var(--accent); }
+.item { color: var(--text); padding-left: 12px; }
+.item small { color: var(--muted); display: block; padding-left: 0; }
+button { font: inherit; border: 1px solid var(--line); background: var(--panel2); color: var(--text); padding: 8px 14px; border-radius: 9px; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+button:disabled { opacity: .45; cursor: default; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 12px; }
+input[type=text] { flex: 1 1 240px; font: inherit; padding: 9px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); }
+.hit { display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.hit img { width: 96px; height: 64px; object-fit: cover; border-radius: 8px; background: var(--panel2); }
+.hit .meta { color: var(--muted); font-size: 13px; word-break: break-all; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+td, th { text-align: left; padding: 7px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+.scroll { overflow-x: auto; max-height: 360px; overflow-y: auto; }
+.muted { color: var(--muted); }
+.bar { height: 8px; border-radius: 99px; background: var(--panel2); overflow: hidden; margin-top: 10px; }
+.bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+#toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 10px 16px; border-radius: 10px; display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1><span>&#9790;</span> Nyx</h1>
+      <div class="tag">It works while you sleep. Your files never leave this machine.</div>
+    </div>
+    <div id="model" class="pill">checking model...</div>
+  </header>
+
+  <section class="card">
+    <h2>Last run</h2>
+    <div id="report"></div>
+  </section>
+
+  <section class="card">
+    <h2>Preview: before and after</h2>
+    <div class="cols">
+      <div><div class="muted" style="margin-bottom:6px">Before (<span id="nbefore">0</span> files)</div><div class="list" id="before"></div></div>
+      <div><div class="muted" style="margin-bottom:6px">After (<span id="nplan">0</span> moves planned)</div><div class="list" id="after"></div></div>
+    </div>
+    <div class="muted" id="skipped" style="margin-top:8px"></div>
+    <div class="row">
+      <button class="primary" id="apply">Apply plan</button>
+      <button id="undo">Undo last run</button>
+      <span class="muted">Nothing is ever deleted. Old versions go to _archive.</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Ask your files</h2>
+    <div class="row" style="margin-top:0">
+      <input type="text" id="q" placeholder="e.g. coffee receipt, error message, wifi password">
+      <button id="askbtn">Search</button>
+    </div>
+    <div id="hits"></div>
+  </section>
+
+  <section class="card">
+    <h2>Screenshots</h2>
+    <div class="muted" id="shotinfo"></div>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="row">
+      <button id="analyze">Understand new screenshots</button>
+      <button id="learn">Learn from my corrections</button>
+      <span class="muted" id="jobmsg"></span>
+    </div>
+    <div id="rules" class="muted" style="margin-top:10px"></div>
+  </section>
+
+  <section class="card">
+    <h2>History</h2>
+    <div class="scroll"><table id="history"></table></div>
+  </section>
+</div>
+<div id="toast"></div>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = id => document.getElementById(id);
+
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  for (const kid of kids) e.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  return e;
+}
+function fill(el, ...kids) { el.replaceChildren(...kids); }
+function bytes(n) {
+  if (n < 1024) return n + " B";
+  const u = ["KB", "MB", "GB"]; let i = -1;
+  do { n /= 1024; i++; } while (n >= 1024 && i < 2);
+  return n.toFixed(1) + " " + u[i];
+}
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.style.display = "block";
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 3500);
+}
+async function api(path, body) {
+  const opt = body === undefined ? {} : { method: "POST", headers: { "X-Nyx-Token": TOKEN, "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  if (!r.ok) throw new Error("request failed (" + r.status + ")");
+  return r.json();
+}
+
+let confirming = false, polling = null;
+
+function render(s) {
+  const m = $("model");
+  m.textContent = s.model.ready ? s.model.name + " ready (local)" : s.model.name + " offline";
+  m.className = "pill " + (s.model.ready ? "good" : "warn");
+
+  const r = s.report;
+  if (!r) fill($("report"), h("div", { class: "muted" }, "Nothing has run yet. Review the preview below and press Apply."));
+  else fill($("report"), h("div", { class: "stats" },
+    stat(r.tidied, "files tidied"), stat(r.archived, "old versions and duplicates archived"),
+    stat(bytes(r.freed), "space freed in the main folder"), stat(r.by_model, "screenshots sorted by the model")),
+    h("div", { class: "muted", style: "margin-top:8px" }, new Date(r.when * 1000).toLocaleString()));
+
+  $("nbefore").textContent = s.before.length;
+  fill($("before"), ...s.before.map(f => h("div", {}, f.name)));
+  $("nplan").textContent = s.plan.length;
+  const groups = {};
+  for (const p of s.plan) { const k = p.dst.split("/").slice(0, -1).join("/") || "."; (groups[k] = groups[k] || []).push(p); }
+  const after = [];
+  for (const k of Object.keys(groups).sort()) {
+    after.push(h("div", { class: "folder" }, k + "/ (" + groups[k].length + ")"));
+    for (const p of groups[k]) after.push(h("div", { class: "item" }, p.dst.split("/").pop(), h("small", {}, "why: " + p.reason)));
+  }
+  fill($("after"), ...(after.length ? after : [h("div", { class: "muted" }, "Everything is already tidy.")]));
+  $("skipped").textContent = s.skipped.length ? s.skipped.length + " recent file(s) left alone: " + s.skipped.join(", ") : "";
+  $("apply").disabled = !s.plan.length;
+  if (!confirming) $("apply").textContent = "Apply plan";
+
+  $("shotinfo").textContent = s.screenshots + " screenshot(s) in the folder, " + s.analyzed + " understood so far.";
+  const j = s.job;
+  $("bar").style.width = j.total ? Math.round(100 * j.done / j.total) + "%" : (j.state === "done" ? "100%" : "0");
+  $("jobmsg").textContent = j.state === "running" ? j.message + " " + j.done + "/" + j.total : j.message;
+  $("analyze").disabled = j.state === "running";
+
+  fill($("rules"), ...(s.rules.length ? [document.createTextNode("Learned: " + s.rules.map(x => x.ext + " goes to " + x.folder + " (" + x.hits + (x.active ? ", active" : ", needs one more") + ")").join("; "))] : []));
+
+  const head = h("tr", {}, h("th", {}, "When"), h("th", {}, "Move"), h("th", {}, "Why"), h("th", {}, ""));
+  const rows = s.history.map(x => h("tr", {},
+    h("td", {}, new Date(x.ts * 1000).toLocaleTimeString()),
+    h("td", {}, x.src + " → " + x.dst),
+    h("td", { class: "muted" }, x.reason),
+    h("td", {}, x.undone ? h("span", { class: "muted" }, "undone") : h("button", { onclick: () => act("/api/undo_move", { id: x.id }, "Restored") }, "Undo"))));
+  fill($("history"), head, ...rows);
+
+  if (j.state === "running" && !polling) polling = setInterval(refresh, 2000);
+  if (j.state !== "running" && polling) { clearInterval(polling); polling = null; }
+}
+function stat(v, label) { return h("div", { class: "stat" }, h("b", {}, v), h("small", {}, label)); }
+
+async function refresh() { try { render(await api("/api/state")); } catch (e) { toast(e.message); } }
+async function act(path, body, okMsg) {
+  try { const r = await api(path, body || {}); toast(okMsg || "Done"); await refresh(); return r; }
+  catch (e) { toast(e.message); }
+}
+
+$("apply").onclick = async () => {
+  if (!confirming) {
+    confirming = true; $("apply").textContent = "Click again to move " + $("nplan").textContent + " files";
+    setTimeout(() => { confirming = false; refresh(); }, 5000); return;
+  }
+  confirming = false;
+  const r = await act("/api/apply", {});
+  if (r) toast("Moved " + r.moved + " files. Undo is available.");
+};
+$("undo").onclick = () => act("/api/undo", {}, "Last run undone");
+$("analyze").onclick = () => act("/api/analyze", {}, "Started");
+$("learn").onclick = async () => { const r = await act("/api/learn", {}); if (r) toast("Learned from " + r.learned + " correction(s)"); };
+async function search() {
+  const q = $("q").value.trim(); if (!q) return;
+  const hits = await api("/api/ask?q=" + encodeURIComponent(q));
+  fill($("hits"), ...(hits.length ? hits.map(x => h("div", { class: "hit" },
+    x.sha ? h("img", { src: "/thumb/" + x.sha, alt: "" }) : h("div", {}),
+    h("div", {}, h("div", {}, x.description || "(no description)"), h("div", { class: "meta" }, x.category + " · " + x.path))))
+    : [h("div", { class: "muted", style: "padding-top:10px" }, "No matches. Run 'Understand new screenshots' first.")]));
+}
+$("askbtn").onclick = search;
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+refresh();
+</script>
+</body>
+</html>

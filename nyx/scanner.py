@@ -24,7 +24,7 @@ def hash_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def scan(root: Path, min_age_hours: float = 24.0) -> tuple[list[FileInfo], list[Path]]:
+def scan(root: Path, min_age_hours: float = 24.0, hash_cache: dict | None = None) -> tuple[list[FileInfo], list[Path]]:
     """Top-level regular files only. Returns (files, skipped_recent)."""
     cutoff = time.time() - min_age_hours * 3600
     files: list[FileInfo] = []
@@ -36,5 +36,12 @@ def scan(root: Path, min_age_hours: float = 24.0) -> tuple[list[FileInfo], list[
         if st.st_mtime > cutoff:
             skipped.append(p)
             continue
-        files.append(FileInfo(p, st.st_size, st.st_mtime, hash_file(p)))
+        key = (str(p), st.st_size, st.st_mtime)
+        if hash_cache is not None and key in hash_cache:
+            digest = hash_cache[key]
+        else:
+            digest = hash_file(p)
+            if hash_cache is not None:
+                hash_cache[key] = digest
+        files.append(FileInfo(p, st.st_size, st.st_mtime, digest))
     return files, skipped

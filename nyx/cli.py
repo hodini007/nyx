@@ -17,9 +17,10 @@ DEFAULT_ROOT = SANDBOX / "Downloads"
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="nyx", description="Tidy a sandbox folder. Never deletes, always undoable.")
-    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn"])
+    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve"])
     p.add_argument("query", nargs="*", help="search words for the ask command")
     p.add_argument("--root", default=str(DEFAULT_ROOT), help="folder inside the playground sandbox")
+    p.add_argument("--port", type=int, default=8765, help="dashboard port (serve command)")
     p.add_argument("--min-age-hours", type=float, default=24.0, help="skip files modified more recently than this")
     args = p.parse_args(argv)
 
@@ -28,6 +29,12 @@ def main(argv=None) -> int:
     except UnsafePath as e:
         print(e, file=sys.stderr)
         return 2
+
+    if args.command == "serve":
+        from .server import serve
+
+        serve(root, args.port, args.min_age_hours)
+        return 0
 
     if args.command == "undo":
         print(f"Restored {undo_last(root)} file(s).")
