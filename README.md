@@ -113,7 +113,7 @@ Everything inside `playground/` can be used without registering it (`python3 -m 
 ## Performance (measured on an i7-10850H laptop, no GPU)
 - Rule-based steps (duplicates, versions, types, undo, search): instant.
 - Gemma 3 4B reading a new screenshot on the CPU: a median of **44 seconds** (range 42 to 58) across 24 real
-  screenshots, 17 minutes in total. An earlier benchmark on synthetic images took 60 to 75 seconds. Using 12 threads instead of 6 made no
+  screenshots, about 18 minutes in total. An earlier benchmark on synthetic images took 60 to 75 seconds. Using 12 threads instead of 6 made no
   difference, because the chip has 6 physical cores.
 - On 6 synthetic screenshots (receipt, error, chat, Wi-Fi note, code, report) it classified all 6 correctly.
 - Results are cached by content hash, so the cost is paid once per screenshot.
