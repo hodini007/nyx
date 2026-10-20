@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .config import load_settings, save_settings
+from .registry import load_folders
 from .daemon import daemon_running, start_background, stop_background
 from dataclasses import asdict
 from .analyzer import ModelUnavailable, OllamaClient, analyze_screenshots, load_categories
@@ -41,10 +42,11 @@ class App:
     def min_age(self) -> float:
         if self.min_age_override is not None:
             return self.min_age_override
-        return load_settings(self.root).min_age_hours
+        return load_settings().min_age_hours
 
     def settings_payload(self) -> dict:
-        return {**asdict(load_settings(self.root)), "service_running": daemon_running(self.root)}
+        return {**asdict(load_settings()), "service_running": daemon_running(),
+                "folders": [{"path": str(f.path), "auto_move": f.auto_move} for f in load_folders()]}
 
     def allowed_hosts(self) -> set[str]:
         return {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
@@ -91,7 +93,7 @@ class App:
                 "history": history,
                 "rules": rules,
                 "last_run": self.last_run(db),
-                "service_running": daemon_running(self.root),
+                "service_running": daemon_running(),
                 "analyzed": db.execute("SELECT COUNT(*) FROM analysis").fetchone()[0],
                 "screenshots": sum(1 for f in files if category_for(f) == "Screenshots"),
             }
@@ -142,8 +144,8 @@ class App:
                 moves = build_plan(self.root, files, load_categories(db), load_rules(db))
             finally:
                 db.close()
-            batch = apply_plan(self.root, moves) if moves else None
-            return {"batch": batch, "moved": len(moves)}
+            res = apply_plan(self.root, moves) if moves else None
+            return {"batch": res.batch if res else None, "moved": res.moved if res else 0, "failed": res.failed if res else 0}
 
     def start_analyze(self) -> dict:
         with self.lock:
@@ -267,21 +269,21 @@ def make_handler(app: App):
                 with app.lock:
                     return self._json({"restored": undo_move(app.root, int(body.get("id", -1)))})
             if path == "/api/settings":
-                save_settings(app.root, body)
+                save_settings(body)
                 return self._json(app.settings_payload())
             if path == "/api/service":
                 action = body.get("action")
                 if action == "start":
-                    start_background(app.root)
+                    start_background()
                 elif action == "stop":
-                    stop_background(app.root)
+                    stop_background()
                 else:
                     return self._json({"error": "bad action"}, 400)
                 for _ in range(20):
-                    if daemon_running(app.root) == (action == "start"):
+                    if daemon_running() == (action == "start"):
                         break
                     time.sleep(0.1)
-                return self._json({"service_running": daemon_running(app.root)})
+                return self._json({"service_running": daemon_running()})
             if path == "/api/run":
                 return self._json(app.start_run())
             if path == "/api/analyze":

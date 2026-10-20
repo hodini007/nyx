@@ -84,19 +84,23 @@ def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window:
         analysis, note_extra = load_categories(db), ""
         ready = [f for f in files if not (category_for(f) == "Screenshots" and f.sha256 not in analysis)]
         moves = build_plan(root, ready, analysis, load_rules(db))
+        moved = 0
         if moves and (auto_move or force):
-            apply_plan(root, moves)
+            res = apply_plan(root, moves)
+            moved = res.moved
+            if res.failed:
+                note_extra = f"{res.failed} file(s) could not be moved"
         elif moves:
-            note_extra, moves = f"{len(moves)} file(s) waiting for your approval", []
+            note_extra = f"{len(moves)} file(s) waiting for your approval"
         waiting = len(files) - len(ready)
-        note = f"analyzed {analyzed}, moved {len(moves)}"
+        note = f"analyzed {analyzed}, moved {moved}"
         if note_extra:
             note += f"; {note_extra}"
         if waiting:
             note += f"; {waiting} screenshot(s) waiting for the model" if model_down or interrupted else ""
         if interrupted:
             note += "; stopped early because you came back"
-        return finish("done", note, trigger, analyzed, len(moves))
+        return finish("done", note, trigger, analyzed, moved)
     finally:
         lock.release()
         db.close()

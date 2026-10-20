@@ -7,25 +7,27 @@ from pathlib import Path
 
 from .config import load_settings, threads_for
 from .lock import FileLock
+from .registry import Folder, config_dir, load_folders
 from .runner import run_once
 
 
-def _lock(root: Path) -> FileLock:
-    (root / ".nyx").mkdir(exist_ok=True)
-    return FileLock(root / ".nyx" / "daemon.lock")
+def _dir(lock_dir: Path | None) -> Path:
+    d = lock_dir or config_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
-def daemon_running(root: Path) -> bool:
-    lock = _lock(root)
+def daemon_running(lock_dir: Path | None = None) -> bool:
+    lock = FileLock(_dir(lock_dir) / "daemon.lock")
     if lock.acquire():
         lock.release()
         return False
     return True
 
 
-def start_background(root: Path) -> bool:
-    """Start the daemon as a detached process. False if one is already running."""
-    if daemon_running(root):
+def start_background() -> bool:
+    """Start the daemon (all watched folders) as a detached process. False if it is already running."""
+    if daemon_running():
         return False
     kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
               "cwd": Path(__file__).resolve().parent.parent}
@@ -33,57 +35,68 @@ def start_background(root: Path) -> bool:
         kwargs["creationflags"] = 0x00000008 | 0x00000200
     else:
         kwargs["start_new_session"] = True
-    subprocess.Popen([sys.executable, "-m", "nyx.cli", "daemon", "--root", str(root)], **kwargs)
+    subprocess.Popen([sys.executable, "-m", "nyx.cli", "daemon"], **kwargs)
     return True
 
 
-def stop_background(root: Path) -> bool:
+def stop_background() -> bool:
     """Stop the daemon, but only if its lock is held (so a stale pid file never kills a stranger)."""
-    pid_file = root / ".nyx" / "daemon.pid"
-    if not daemon_running(root):
+    if not daemon_running():
         return False
     try:
-        os.kill(int(pid_file.read_text().strip()), signal.SIGTERM)
+        os.kill(int((config_dir() / "daemon.pid").read_text().strip()), signal.SIGTERM)
         return True
     except (OSError, ValueError):
         return False
 
 
-def run_daemon(root: Path, overrides: dict | None = None, max_ticks: int | None = None, sleep=time.sleep,
-               log=print, **extra) -> int:
-    """Wake every few minutes; run_once decides whether the machine is idle enough to do any work.
-    Settings are re-read each cycle, so edits take effect without a restart."""
+def run_daemon(targets=None, overrides: dict | None = None, max_ticks: int | None = None, sleep=time.sleep,
+               log=print, lock_dir: Path | None = None, **extra) -> int:
+    """Wake every few minutes and give each watched folder a chance to run; run_once decides whether the machine
+    is idle enough to do any work. Settings and the folder list are re-read each cycle."""
     overrides = dict(overrides or {})
-    lock = _lock(root)
+    targets = targets or load_folders
+    base = _dir(lock_dir)
+    lock = FileLock(base / "daemon.lock")
     if not lock.acquire():
-        log("Nyx daemon is already running for this folder.")
+        log("Nyx daemon is already running.")
         return 1
-    pid_file = root / ".nyx" / "daemon.pid"
+    pid_file = base / "daemon.pid"
     pid_file.write_text(str(os.getpid()))
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
-    log("Nyx daemon started. Settings are re-read every cycle. Ctrl+C to stop.")
-    last, ticks = None, 0
+    log("Nyx daemon started. Settings and watched folders are re-read every cycle. Ctrl+C to stop.")
+    last: dict[str, str] = {}
+    ticks = 0
     try:
         while max_ticks is None or ticks < max_ticks:
-            s = load_settings(root)
+            s = load_settings()
             interval = overrides.get("interval_minutes", s.interval_minutes)
-            try:
-                if not s.enabled:
-                    r, line = {"status": "skipped"}, "[paused] automatic tidying is switched off in settings"
-                else:
-                    kwargs = dict(min_age_hours=s.min_age_hours, min_new=s.min_new, window=s.window(),
-                                  idle_minutes=s.idle_minutes, threads=threads_for(s.effort),
-                                  auto_move=s.auto_move, allow_battery=s.run_on_battery)
-                    kwargs.update({k: v for k, v in overrides.items() if k != "interval_minutes"})
-                    kwargs.update(extra)
-                    r = run_once(root, **kwargs)
-                    line = f"[{r['status']}] {r.get('trigger', '')} {r['note']}".replace("  ", " ")
-            except Exception as e:
-                r, line = {"status": "error"}, f"[error] {e}"
-            if r["status"] != "skipped" or line != last:
-                log(time.strftime("%H:%M:%S ") + line)
-            last = line
+            folders: list[Folder] = targets()
+            lines: list[tuple[str, str, str]] = []
+            if not folders:
+                lines.append(("-", "skipped", "[idle] no watched folders yet. Add one in the control panel or with: nyx folders add PATH"))
+            elif not s.enabled:
+                lines.append(("-", "skipped", "[paused] automatic tidying is switched off in settings"))
+            else:
+                for f in folders:
+                    try:
+                        if not f.path.is_dir():
+                            lines.append((str(f.path), "skipped", f"[missing] {f.path} is not available"))
+                            continue
+                        kwargs = dict(min_age_hours=s.min_age_hours, min_new=s.min_new, window=s.window(),
+                                      idle_minutes=s.idle_minutes, threads=threads_for(s.effort),
+                                      auto_move=f.auto_move, allow_battery=s.run_on_battery)
+                        kwargs.update({k: v for k, v in overrides.items() if k != "interval_minutes"})
+                        kwargs.update(extra)
+                        r = run_once(f.path, **kwargs)
+                        lines.append((str(f.path), r["status"], f"[{r['status']}] {f.path.name}: {r.get('trigger', '')} {r['note']}".replace("  ", " ")))
+                    except Exception as e:
+                        lines.append((str(f.path), "error", f"[error] {f.path.name}: {e}"))
+            for key, status, line in lines:
+                if status != "skipped" or last.get(key) != line:
+                    log(time.strftime("%H:%M:%S ") + line)
+                last[key] = line
             ticks += 1
             if max_ticks is not None and ticks >= max_ticks:
                 break

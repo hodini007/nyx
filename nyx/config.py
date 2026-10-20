@@ -15,7 +15,6 @@ class Settings:
     interval_minutes: float = 5.0
     min_age_hours: float = 24.0
     effort: str = "full"
-    auto_move: bool = True
     run_on_battery: bool = False
 
     def window(self) -> tuple[int, int]:
@@ -49,21 +48,23 @@ def from_dict(data: dict) -> Settings:
     return s
 
 
-def settings_path(root: Path) -> Path:
-    return root / ".nyx" / "settings.json"
+def settings_path(base: Path | None = None) -> Path:
+    from .registry import config_dir
+
+    return (base or config_dir()) / "settings.json"
 
 
-def load_settings(root: Path) -> Settings:
+def load_settings(base: Path | None = None) -> Settings:
     try:
-        return from_dict(json.loads(settings_path(root).read_text()))
+        return from_dict(json.loads(settings_path(base).read_text()))
     except (OSError, ValueError, AttributeError):
         return Settings()
 
 
-def save_settings(root: Path, data: dict) -> Settings:
+def save_settings(data: dict, base: Path | None = None) -> Settings:
     s = from_dict(data)
-    path = settings_path(root)
-    path.parent.mkdir(exist_ok=True)
+    path = settings_path(base)
+    path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(asdict(s), indent=2))
     os.replace(tmp, path)

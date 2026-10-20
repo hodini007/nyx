@@ -4,6 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+PARTIAL = {".crdownload", ".part", ".partial", ".download", ".tmp", ".opdownload", ".aria2", ".!ut", ".temp"}
+JUNK = {"desktop.ini", "thumbs.db", ".ds_store"}
+
+
 @dataclass
 class FileInfo:
     path: Path
@@ -30,7 +34,7 @@ def scan(root: Path, min_age_hours: float = 24.0, hash_cache: dict | None = None
     files: list[FileInfo] = []
     skipped: list[Path] = []
     for p in sorted(root.iterdir()):
-        if p.name.startswith(".") or p.is_symlink() or not p.is_file():
+        if p.name.startswith(".") or p.name.lower() in JUNK or p.suffix.lower() in PARTIAL or p.is_symlink() or not p.is_file():
             continue
         st = p.stat()
         if st.st_mtime > cutoff:

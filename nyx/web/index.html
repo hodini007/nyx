@@ -85,6 +85,7 @@ td, th { text-align: left; padding: 7px 8px; border-top: 1px solid var(--line); 
       <span class="muted">The service does the work while you are away. Closing this window does not stop it.</span>
     </div>
     <div class="form" id="settings"></div>
+    <div class="muted" id="folders" style="margin-top:10px"></div>
     <div class="row"><button class="primary" id="savesettings">Save settings</button><span class="muted" id="savemsg"></span></div>
     <div class="muted" style="margin-top:6px">Changes apply on the next check. No restart needed.</div>
   </section>
@@ -177,7 +178,6 @@ const FIELDS = [
   { k: "interval_minutes", t: "num", label: "Check every (minutes)", min: 1, max: 120 },
   { k: "min_age_hours", t: "num", label: "Leave files alone until they are older than (hours)", min: 0, max: 720 },
   { k: "effort", t: "select", label: "Effort", options: [["full", "Full speed (all physical cores)"], ["gentle", "Gentle (a quarter of the threads)"]] },
-  { k: "auto_move", t: "bool", label: "Move files automatically", help: "Off: only analyze screenshots and wait for your approval here." },
   { k: "run_on_battery", t: "bool", label: "Run on battery power" },
 ];
 function buildSettings(values) {
@@ -189,6 +189,9 @@ function buildSettings(values) {
     return h("div", { class: "field" }, h("label", { for: "s_" + f.k }, f.label), el, ...(f.help ? [h("small", {}, f.help)] : []));
   });
   fill($("settings"), ...rows);
+  $("folders").textContent = (values.folders && values.folders.length
+    ? "Watched folders: " + values.folders.map(f => f.path + (f.auto_move ? " (moves automatically)" : " (preview only)")).join("; ")
+    : "No watched folders yet.") + " Manage them with the control panel (nyx gui) or: nyx folders add PATH";
 }
 function readSettings() {
   const out = {};

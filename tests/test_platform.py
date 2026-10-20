@@ -8,6 +8,7 @@ from nyx.cli import main
 from nyx.daemon import run_daemon
 from nyx.idle import parse_gnome_idle, parse_hid_idle
 from nyx.lock import FileLock
+from nyx.registry import Folder
 from nyx.safety import SANDBOX
 
 BUSY = lambda: (False, "user is active")
@@ -38,18 +39,24 @@ class DaemonTests(unittest.TestCase):
     def test_ticks_and_collapses_repeated_skips(self):
         with tempfile.TemporaryDirectory() as t:
             logs = []
-            code = run_daemon(Path(t), max_ticks=3, sleep=lambda s: None, log=logs.append, idle_check=BUSY)
+            code = run_daemon(lambda: [Folder(Path(t), True)], max_ticks=3, sleep=lambda s: None, log=logs.append,
+                              lock_dir=Path(t) / ".nyx", idle_check=BUSY)
             self.assertEqual(code, 0)
             self.assertEqual(len(logs), 2)
             self.assertIn("user is active", logs[1])
 
+    def test_no_folders_is_reported_not_an_error(self):
+        with tempfile.TemporaryDirectory() as t:
+            logs = []
+            run_daemon(lambda: [], max_ticks=1, sleep=lambda s: None, log=logs.append, lock_dir=Path(t))
+            self.assertIn("no watched folders", logs[-1])
+
     def test_second_daemon_refuses(self):
         with tempfile.TemporaryDirectory() as t:
-            (Path(t) / ".nyx").mkdir()
-            held = FileLock(Path(t) / ".nyx" / "daemon.lock")
+            held = FileLock(Path(t) / "daemon.lock")
             held.acquire()
             logs = []
-            self.assertEqual(run_daemon(Path(t), max_ticks=1, sleep=lambda s: None, log=logs.append), 1)
+            self.assertEqual(run_daemon(lambda: [], max_ticks=1, sleep=lambda s: None, log=logs.append, lock_dir=Path(t)), 1)
             held.release()
 
 
