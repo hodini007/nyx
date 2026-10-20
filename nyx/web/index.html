@@ -53,6 +53,12 @@ td, th { text-align: left; padding: 7px 8px; border-top: 1px solid var(--line); 
 .muted { color: var(--muted); }
 .bar { height: 8px; border-radius: 99px; background: var(--panel2); overflow: hidden; margin-top: 10px; }
 .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+.form { display: grid; gap: 10px; margin-top: 12px; }
+.field { display: grid; grid-template-columns: minmax(180px, 1.3fr) 1fr; gap: 6px 14px; align-items: center; }
+@media (max-width: 620px) { .field { grid-template-columns: 1fr; } }
+.field small { grid-column: 1 / -1; color: var(--muted); margin-top: -4px; }
+.field input[type=number], .field select { font: inherit; padding: 7px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); width: 100%; max-width: 280px; }
+.field input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); }
 #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 10px 16px; border-radius: 10px; display: none; }
 </style>
 </head>
@@ -69,6 +75,18 @@ td, th { text-align: left; padding: 7px 8px; border-top: 1px solid var(--line); 
   <section class="card">
     <h2>Last run</h2>
     <div id="report"></div>
+  </section>
+
+  <section class="card">
+    <h2>Automatic mode</h2>
+    <div class="row" style="margin-top:0">
+      <span id="service" class="pill">checking...</span>
+      <button id="svc">Start background service</button>
+      <span class="muted">The service does the work while you are away. Closing this window does not stop it.</span>
+    </div>
+    <div class="form" id="settings"></div>
+    <div class="row"><button class="primary" id="savesettings">Save settings</button><span class="muted" id="savemsg"></span></div>
+    <div class="muted" style="margin-top:6px">Changes apply on the next check. No restart needed.</div>
   </section>
 
   <section class="card">
@@ -146,9 +164,49 @@ async function api(path, body) {
   return r.json();
 }
 
-let confirming = false, polling = null;
+let confirming = false, polling = null, serviceOn = false;
+
+const HOURS = Array.from({ length: 24 }, (_, i) => [i, String(i).padStart(2, "0") + ":00"]);
+const FIELDS = [
+  { k: "enabled", t: "bool", label: "Automatic tidying", help: "Master switch. Off pauses the background service." },
+  { k: "idle_minutes", t: "num", label: "Start after the computer has been idle for (minutes)", min: 1, max: 240, help: "Needs a system that can report idle time. Otherwise only the night window applies." },
+  { k: "night_enabled", t: "bool", label: "Use a night window", help: "Allowed to run during these hours, even when idle time cannot be detected." },
+  { k: "night_start", t: "select", label: "Night starts at", options: HOURS },
+  { k: "night_end", t: "select", label: "Night ends at", options: HOURS },
+  { k: "min_new", t: "num", label: "Also run when this many files are waiting", min: 1, max: 1000, help: "Only when you are idle." },
+  { k: "interval_minutes", t: "num", label: "Check every (minutes)", min: 1, max: 120 },
+  { k: "min_age_hours", t: "num", label: "Leave files alone until they are older than (hours)", min: 0, max: 720 },
+  { k: "effort", t: "select", label: "Effort", options: [["full", "Full speed (all physical cores)"], ["gentle", "Gentle (a quarter of the threads)"]] },
+  { k: "auto_move", t: "bool", label: "Move files automatically", help: "Off: only analyze screenshots and wait for your approval here." },
+  { k: "run_on_battery", t: "bool", label: "Run on battery power" },
+];
+function buildSettings(values) {
+  const rows = FIELDS.map(f => {
+    let el;
+    if (f.t === "bool") { el = h("input", { type: "checkbox", id: "s_" + f.k }); el.checked = !!values[f.k]; }
+    else if (f.t === "num") { el = h("input", { type: "number", id: "s_" + f.k, min: f.min, max: f.max, step: "any" }); el.value = values[f.k]; }
+    else { el = h("select", { id: "s_" + f.k }, ...f.options.map(([v, text]) => h("option", { value: v }, text))); el.value = values[f.k]; }
+    return h("div", { class: "field" }, h("label", { for: "s_" + f.k }, f.label), el, ...(f.help ? [h("small", {}, f.help)] : []));
+  });
+  fill($("settings"), ...rows);
+}
+function readSettings() {
+  const out = {};
+  for (const f of FIELDS) {
+    const el = $("s_" + f.k);
+    out[f.k] = f.t === "bool" ? el.checked : f.t === "num" ? parseFloat(el.value) : (f.k.startsWith("night") ? parseInt(el.value, 10) : el.value);
+  }
+  return out;
+}
+function showService(on) {
+  serviceOn = on;
+  $("service").textContent = on ? "Background service: running" : "Background service: not running";
+  $("service").className = "pill " + (on ? "good" : "warn");
+  $("svc").textContent = on ? "Stop background service" : "Start background service";
+}
 
 function render(s) {
+  showService(s.service_running);
   const m = $("model");
   m.textContent = s.model.ready ? s.model.name + " ready (local)" : s.model.name + " offline";
   m.className = "pill " + (s.model.ready ? "good" : "warn");
@@ -227,6 +285,19 @@ async function search() {
 }
 $("askbtn").onclick = search;
 $("q").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+$("savesettings").onclick = async () => {
+  try {
+    const saved = await api("/api/settings", readSettings());
+    buildSettings(saved); $("savemsg").textContent = "Saved. It takes effect on the next check.";
+  } catch (e) { $("savemsg").textContent = e.message; }
+};
+$("svc").onclick = async () => {
+  try { const r = await api("/api/service", { action: serviceOn ? "stop" : "start" }); showService(r.service_running); toast(r.service_running ? "Service started" : "Service stopped"); }
+  catch (e) { toast(e.message); }
+};
+api("/api/settings").then(buildSettings);
+const ping = () => fetch("/api/ping").catch(() => {});
+ping(); setInterval(ping, 10000);
 refresh();
 </script>
 </body>

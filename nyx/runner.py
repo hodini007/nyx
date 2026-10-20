@@ -19,7 +19,8 @@ def parse_window(text: str) -> tuple[int, int]:
 
 def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window: tuple[int, int] = (1, 5),
              idle_minutes: float = 5.0, force: bool = False, idle_known: bool = False,
-             threads: int | None = None, client=None, idle_check=None, still_idle=None) -> dict:
+             threads: int | None = None, auto_move: bool = True, allow_battery: bool = False,
+             client=None, idle_check=None, still_idle=None) -> dict:
     db = open_db(root)
     lock = FileLock(root / ".nyx" / "run.lock")
     if not lock.acquire():
@@ -46,7 +47,7 @@ def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window:
             if idle_known:
                 ok, why = True, "idle reported by the desktop"
             else:
-                ok, why = (idle_check or (lambda: machine_idle(idle_minutes, window)))()
+                ok, why = (idle_check or (lambda: machine_idle(idle_minutes, window, allow_battery=allow_battery)))()
             if not ok:
                 return {"status": "skipped", "note": why}
             if len(planned) >= min_new:
@@ -80,13 +81,17 @@ def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window:
             else:
                 model_down = True
 
-        analysis = load_categories(db)
+        analysis, note_extra = load_categories(db), ""
         ready = [f for f in files if not (category_for(f) == "Screenshots" and f.sha256 not in analysis)]
         moves = build_plan(root, ready, analysis, load_rules(db))
-        if moves:
+        if moves and (auto_move or force):
             apply_plan(root, moves)
+        elif moves:
+            note_extra, moves = f"{len(moves)} file(s) waiting for your approval", []
         waiting = len(files) - len(ready)
         note = f"analyzed {analyzed}, moved {len(moves)}"
+        if note_extra:
+            note += f"; {note_extra}"
         if waiting:
             note += f"; {waiting} screenshot(s) waiting for the model" if model_down or interrupted else ""
         if interrupted:

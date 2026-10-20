@@ -71,6 +71,22 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.app.job["state"], "done")
         self.assertEqual(self.req("/api/run", {})[0], 403)
 
+    def test_settings_api_requires_token_and_persists(self):
+        code, body = self.req("/api/settings")
+        self.assertEqual(code, 200)
+        self.assertIn("night_start", json.loads(body))
+        self.assertEqual(self.req("/api/settings", {"idle_minutes": 7})[0], 403)
+        code, body = self.req("/api/settings", {"idle_minutes": 7, "night_start": 23}, token=self.app.token)
+        saved = json.loads(body)
+        self.assertEqual((saved["idle_minutes"], saved["night_start"]), (7, 23))
+        self.assertEqual(json.loads(self.req("/api/settings")[1])["idle_minutes"], 7)
+        self.req("/api/settings", {}, token=self.app.token)
+
+    def test_ping_and_bad_service_action(self):
+        self.assertEqual(self.req("/api/ping")[0], 200)
+        self.assertIsNotNone(self.app.last_ping)
+        self.assertEqual(self.req("/api/service", {"action": "explode"}, token=self.app.token)[0], 400)
+
     def test_apply_then_undo_via_api(self):
         t = self.app.token
         expected = len(json.loads(self.req("/api/state")[1])["plan"])

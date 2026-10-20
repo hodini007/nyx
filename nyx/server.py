@@ -7,6 +7,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from .config import load_settings, save_settings
+from .daemon import daemon_running, start_background, stop_background
+from dataclasses import asdict
 from .analyzer import ModelUnavailable, OllamaClient, analyze_screenshots, load_categories
 from .db import open_db
 from .executor import apply_plan, undo_last, undo_move
@@ -23,15 +26,25 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 
 
 class App:
-    def __init__(self, root: Path, port: int, min_age_hours: float):
+    def __init__(self, root: Path, port: int, min_age_hours: float | None = None):
         self.root = root
         self.port = port
-        self.min_age = min_age_hours
+        self.min_age_override = min_age_hours
+        self.last_ping: float | None = None
         self.token = secrets.token_urlsafe(24)
         self.lock = threading.Lock()
         self.hash_cache: dict = {}
         self.job = {"state": "idle", "done": 0, "total": 0, "message": ""}
         self._model = (0.0, {"name": "", "ready": False})
+
+    @property
+    def min_age(self) -> float:
+        if self.min_age_override is not None:
+            return self.min_age_override
+        return load_settings(self.root).min_age_hours
+
+    def settings_payload(self) -> dict:
+        return {**asdict(load_settings(self.root)), "service_running": daemon_running(self.root)}
 
     def allowed_hosts(self) -> set[str]:
         return {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
@@ -78,6 +91,7 @@ class App:
                 "history": history,
                 "rules": rules,
                 "last_run": self.last_run(db),
+                "service_running": daemon_running(self.root),
                 "analyzed": db.execute("SELECT COUNT(*) FROM analysis").fetchone()[0],
                 "screenshots": sum(1 for f in files if category_for(f) == "Screenshots"),
             }
@@ -207,6 +221,11 @@ def make_handler(app: App):
             if url.path == "/":
                 html = PAGE.read_text().replace("__TOKEN__", app.token)
                 return self._send(200, html.encode(), "text/html; charset=utf-8")
+            if url.path == "/api/ping":
+                app.last_ping = time.time()
+                return self._json({"ok": True})
+            if url.path == "/api/settings":
+                return self._json(app.settings_payload())
             if url.path == "/api/state":
                 return self._json(app.state())
             if url.path == "/api/ask":
@@ -247,6 +266,22 @@ def make_handler(app: App):
             if path == "/api/undo_move":
                 with app.lock:
                     return self._json({"restored": undo_move(app.root, int(body.get("id", -1)))})
+            if path == "/api/settings":
+                save_settings(app.root, body)
+                return self._json(app.settings_payload())
+            if path == "/api/service":
+                action = body.get("action")
+                if action == "start":
+                    start_background(app.root)
+                elif action == "stop":
+                    stop_background(app.root)
+                else:
+                    return self._json({"error": "bad action"}, 400)
+                for _ in range(20):
+                    if daemon_running(app.root) == (action == "start"):
+                        break
+                    time.sleep(0.1)
+                return self._json({"service_running": daemon_running(app.root)})
             if path == "/api/run":
                 return self._json(app.start_run())
             if path == "/api/analyze":
@@ -263,10 +298,16 @@ def make_handler(app: App):
     return Handler
 
 
-def serve(root: Path, port: int = 8765, min_age_hours: float = 24.0) -> None:
+def make_server(root: Path, port: int = 8765, min_age_hours: float | None = None):
     app = App(root, port, min_age_hours)
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(app))
-    print(f"Nyx dashboard: http://localhost:{port}  (watching {root})  Ctrl+C to stop")
+    app.port = httpd.server_address[1]
+    return httpd, app
+
+
+def serve(root: Path, port: int = 8765, min_age_hours: float | None = None) -> None:
+    httpd, app = make_server(root, port, min_age_hours)
+    print(f"Nyx dashboard: http://localhost:{app.port}  (watching {root})  Ctrl+C to stop")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .analyzer import ModelUnavailable, OllamaClient, analyze_screenshots, load_categories
 from .changes import is_text, summarize_change
+from .config import load_settings, threads_for
 from .db import open_db
 from .learn import learn_from_corrections, load_rules
 from .executor import apply_plan, undo_last
@@ -16,17 +17,31 @@ from .search import ask
 DEFAULT_ROOT = SANDBOX / "Downloads"
 
 
-def gentle_threads(args):
-    return max(1, (os.cpu_count() or 4) // 4) if args.gentle else None
+def overrides(args) -> dict:
+    from .runner import parse_window
+
+    o = {}
+    if args.min_age_hours is not None:
+        o["min_age_hours"] = args.min_age_hours
+    if args.min_new is not None:
+        o["min_new"] = args.min_new
+    if args.window is not None:
+        o["window"] = parse_window(args.window)
+    if args.idle_minutes is not None:
+        o["idle_minutes"] = args.idle_minutes
+    if args.interval is not None:
+        o["interval_minutes"] = args.interval
+    if args.gentle:
+        o["threads"] = max(1, (os.cpu_count() or 4) // 4)
+    return o
 
 
 def print_schedule(root: Path, args) -> None:
     project = Path(__file__).resolve().parent.parent
     py = sys.executable
     target = args.os or {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux")
-    rest = f"--min-new {args.min_new} --window {args.window}"
-    flags = f'--root "{root}" {rest}'
-    win_flags = f'--root \\"{root}\\" {rest}'
+    flags = f'--root "{root}"'
+    win_flags = f'--root \\"{root}\\"'
     if target == "linux":
         print(f"""# 1. Autostart: save as ~/.config/systemd/user/nyx.service
 [Unit]
@@ -55,7 +70,6 @@ WantedBy=default.target
   <key>ProgramArguments</key><array>
     <string>{py}</string><string>-m</string><string>nyx.cli</string><string>daemon</string>
     <string>--root</string><string>{root}</string>
-    <string>--min-new</string><string>{args.min_new}</string><string>--window</string><string>{args.window}</string>
   </array>
   <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
 </dict></plist>
@@ -76,19 +90,19 @@ REM    then open its Properties and set a "Shortcut key" (for example Ctrl+Alt+N
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="nyx", description="Tidy a sandbox folder. Never deletes, always undoable.")
-    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve", "run", "daemon", "schedule"])
+    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve", "run", "daemon", "schedule", "app"])
     p.add_argument("query", nargs="*", help="search words for the ask command")
     p.add_argument("--root", default=str(DEFAULT_ROOT), help="folder inside the playground sandbox")
     p.add_argument("--port", type=int, default=8765, help="dashboard port (serve command)")
     p.add_argument("--if-idle", action="store_true", help="run: only act when the machine is idle and enough files are waiting")
     p.add_argument("--idle-known", action="store_true", help="run: the caller (e.g. hypridle) guarantees the machine is idle")
-    p.add_argument("--min-new", type=int, default=10, help="run --if-idle: files waiting before a daytime run")
-    p.add_argument("--window", default="1-5", help="run --if-idle: nightly hours, e.g. 1-5")
-    p.add_argument("--idle-minutes", type=float, default=5.0, help="run --if-idle: minutes of inactivity required")
+    p.add_argument("--min-new", type=int, default=None, help="override the saved setting: files waiting before a daytime run")
+    p.add_argument("--window", default=None, help="override the saved setting: nightly hours, e.g. 1-5")
+    p.add_argument("--idle-minutes", type=float, default=None, help="override the saved setting: minutes of inactivity required")
     p.add_argument("--gentle", action="store_true", help="use only a quarter of the CPU threads so other apps stay responsive")
-    p.add_argument("--interval", type=float, default=5.0, help="daemon: minutes between idle checks")
+    p.add_argument("--interval", type=float, default=None, help="override the saved setting: minutes between idle checks")
     p.add_argument("--os", choices=["linux", "macos", "windows"], help="schedule: print instructions for this system")
-    p.add_argument("--min-age-hours", type=float, default=24.0, help="skip files modified more recently than this")
+    p.add_argument("--min-age-hours", type=float, default=None, help="override the saved setting: skip files modified more recently than this")
     args = p.parse_args(argv)
 
     try:
@@ -101,27 +115,39 @@ def main(argv=None) -> int:
         print_schedule(root, args)
         return 0
 
+    saved = load_settings(root)
+    ov = overrides(args)
+    min_age = ov.get("min_age_hours", saved.min_age_hours)
+
     if args.command == "daemon":
         from .daemon import run_daemon
-        from .runner import parse_window
 
-        return run_daemon(root, args.interval, min_age_hours=args.min_age_hours, min_new=args.min_new,
-                          window=parse_window(args.window), idle_minutes=args.idle_minutes,
-                          idle_known=args.idle_known, threads=gentle_threads(args))
+        return run_daemon(root, ov, idle_known=args.idle_known)
 
     if args.command == "run":
-        from .runner import parse_window, run_once
+        from .runner import run_once
 
-        r = run_once(root, args.min_age_hours, args.min_new, parse_window(args.window), args.idle_minutes,
-                     force=not args.if_idle, idle_known=args.idle_known, threads=gentle_threads(args))
+        kwargs = dict(min_age_hours=saved.min_age_hours, min_new=saved.min_new, window=saved.window(),
+                      idle_minutes=saved.idle_minutes, threads=threads_for(saved.effort),
+                      auto_move=saved.auto_move, allow_battery=saved.run_on_battery)
+        kwargs.update({k: v for k, v in ov.items() if k != "interval_minutes"})
+        if args.if_idle and not saved.enabled:
+            print("[skipped] automatic tidying is switched off in settings")
+            return 0
+        r = run_once(root, force=not args.if_idle, idle_known=args.idle_known, **kwargs)
         print(f"[{r['status']}] {r.get('trigger', '')} {r['note']}".replace("  ", " "))
         return 0
 
     if args.command == "serve":
         from .server import serve
 
-        serve(root, args.port, args.min_age_hours)
+        serve(root, args.port, ov.get("min_age_hours"))
         return 0
+
+    if args.command == "app":
+        from .appwin import run_app
+
+        return run_app(root, ov.get("min_age_hours"))
 
     if args.command == "undo":
         print(f"Restored {undo_last(root)} file(s).")
@@ -139,7 +165,7 @@ def main(argv=None) -> int:
         print(f"Learned from {learn_from_corrections(root, open_db(root))} correction(s).")
         return 0
 
-    files, skipped = scan(root, args.min_age_hours)
+    files, skipped = scan(root, min_age)
     db = open_db(root)
 
     if args.command == "changes":

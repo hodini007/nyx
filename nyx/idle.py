@@ -115,9 +115,10 @@ def in_window(hour: int, window: tuple[int, int]) -> bool:
     return start <= hour < end if start <= end else hour >= start or hour < end
 
 
-def machine_idle(idle_minutes: float, window: tuple[int, int], hour: int | None = None) -> tuple[bool, str]:
+def machine_idle(idle_minutes: float, window: tuple[int, int], hour: int | None = None,
+                 allow_battery: bool = False) -> tuple[bool, str]:
     """Conservative: runs when idle is known, or at night when the system cannot tell."""
-    if not on_ac_power():
+    if not allow_battery and not on_ac_power():
         return False, "on battery"
     if not load_ok():
         return False, "machine is busy"

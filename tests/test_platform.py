@@ -38,7 +38,7 @@ class DaemonTests(unittest.TestCase):
     def test_ticks_and_collapses_repeated_skips(self):
         with tempfile.TemporaryDirectory() as t:
             logs = []
-            code = run_daemon(Path(t), 0.0, max_ticks=3, sleep=lambda s: None, log=logs.append, idle_check=BUSY)
+            code = run_daemon(Path(t), max_ticks=3, sleep=lambda s: None, log=logs.append, idle_check=BUSY)
             self.assertEqual(code, 0)
             self.assertEqual(len(logs), 2)
             self.assertIn("user is active", logs[1])
@@ -49,7 +49,7 @@ class DaemonTests(unittest.TestCase):
             held = FileLock(Path(t) / ".nyx" / "daemon.lock")
             held.acquire()
             logs = []
-            self.assertEqual(run_daemon(Path(t), 0.0, max_ticks=1, sleep=lambda s: None, log=logs.append), 1)
+            self.assertEqual(run_daemon(Path(t), max_ticks=1, sleep=lambda s: None, log=logs.append), 1)
             held.release()
 
 
