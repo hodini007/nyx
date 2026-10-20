@@ -13,6 +13,7 @@ from .executor import apply_plan, undo_last
 from .planner import build_plan
 from .safety import SANDBOX, UnsafePath, ensure_root
 from .scanner import scan
+from .smart import smart_plan
 from .search import ask
 
 DEFAULT_ROOT = SANDBOX / "Downloads"
@@ -88,6 +89,40 @@ REM    cmd /c cd /d "{project}" && "{py}" -m nyx.cli run
 REM    then open its Properties and set a "Shortcut key" (for example Ctrl+Alt+N).""")
 
 
+def smart_command(args) -> int:
+    from dataclasses import asdict
+
+    from .config import save_settings
+    from .smart import smart_status
+
+    action = (args.query or ["status"])[0]
+    if action == "status":
+        st = smart_status()
+        print(st["message"])
+        print("Smart sorting is " + ("ON" if load_settings().smart_sorting else "OFF") + " in settings.")
+        return 0
+    if action in ("on", "off"):
+        save_settings({**asdict(load_settings()), "smart_sorting": action == "on"})
+        st = smart_status()
+        print(f"Smart sorting turned {action}." + ("" if st["ready"] or action == "off" else f" Note: {st['message']}"))
+        return 0
+    if action == "setup":
+        st = smart_status()
+        if not st["installed"]:
+            print(st["message"] + "\nRun this from the project environment: .venv/bin/python -m nyx.cli smart setup", file=sys.stderr)
+            return 1
+        print("Loading TabPFN once. If a browser window opens, log in to Prior Labs and accept the model license.")
+        from .smart import TabPFNModel
+
+        model = TabPFNModel()
+        model.fit([[float(i % 3), float(i)] for i in range(12)], ["a", "b", "c"] * 4)
+        model.predict_proba([[0.0, 0.0]])
+        print("TabPFN is ready. Turn it on with: nyx smart on")
+        return 0
+    print("Usage: nyx smart [status | setup | on | off]", file=sys.stderr)
+    return 2
+
+
 def folders_command(args) -> int:
     from . import registry
 
@@ -141,7 +176,7 @@ def all_folders_command(args, ov: dict, saved) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="nyx", description="Tidy a sandbox folder. Never deletes, always undoable.")
-    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve", "run", "daemon", "schedule", "app", "folders", "gui"])
+    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve", "run", "daemon", "schedule", "app", "folders", "gui", "smart"])
     p.add_argument("query", nargs="*", help="search words for the ask command")
     p.add_argument("--root", default=None, help="a watched folder (default: the demo sandbox; run and daemon default to all watched folders)")
     p.add_argument("--auto", action="store_true", help="folders add: move files automatically from the start")
@@ -162,6 +197,8 @@ def main(argv=None) -> int:
         return 0
     if args.command == "folders":
         return folders_command(args)
+    if args.command == "smart":
+        return smart_command(args)
     if args.command == "gui":
         try:
             from .gui import run_gui
@@ -260,7 +297,7 @@ def main(argv=None) -> int:
         print(f"Analyzed {n} new screenshot(s); the rest were cached.")
         return 0
 
-    moves = build_plan(root, files, load_categories(db), load_rules(db))
+    moves = smart_plan(root, files, db)
     for m in moves:
         print(f"{m.src.relative_to(root)}  ->  {m.dst.relative_to(root)}   ({m.reason})")
     for s in skipped:

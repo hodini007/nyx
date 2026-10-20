@@ -10,6 +10,7 @@ from .learn import learn_from_corrections, load_rules
 from .planner import build_plan
 from .rules import category_for
 from .scanner import scan
+from .smart import smart_plan
 
 
 def parse_window(text: str) -> tuple[int, int]:
@@ -38,7 +39,7 @@ def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window:
         files, _ = scan(root, min_age_hours, DbHashCache(db))
         known = {r[0] for r in db.execute("SELECT sha256 FROM analysis")}
         pending_shots = [f for f in files if category_for(f) == "Screenshots" and f.sha256 not in known]
-        planned = build_plan(root, files, load_categories(db), load_rules(db))
+        planned = smart_plan(root, files, db)
         night = in_window(time.localtime().tm_hour, window)
 
         if force:
@@ -83,7 +84,7 @@ def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window:
 
         analysis, note_extra = load_categories(db), ""
         ready = [f for f in files if not (category_for(f) == "Screenshots" and f.sha256 not in analysis)]
-        moves = build_plan(root, ready, analysis, load_rules(db))
+        moves = smart_plan(root, ready, db)
         moved = 0
         if moves and (auto_move or force):
             res = apply_plan(root, moves)

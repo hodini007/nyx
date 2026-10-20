@@ -18,10 +18,17 @@ from .registry import add_folder, load_folders, remove_folder, set_auto_move
 from .runner import run_once
 from .safety import PROJECT, UnsafePath
 from .scanner import scan
+from .smart import smart_plan
 
 HOURS = [f"{h:02d}:00" for h in range(24)]
 EFFORT = {"full": "Full speed (all physical cores)", "gentle": "Gentle (a quarter of the threads)"}
 AUTO, PREVIEW = "Moves automatically", "Preview only"
+
+
+def _smart_message() -> str:
+    from .smart import smart_status
+
+    return smart_status()["message"]
 
 
 def ago(ts: float) -> str:
@@ -125,6 +132,7 @@ class NyxPanel:
         tab = ttk.Frame(self.tabs, padding=12)
         self.tabs.add(tab, text="Schedule")
         self.v_enabled = tk.BooleanVar()
+        self.v_smart = tk.BooleanVar()
         self.v_night = tk.BooleanVar()
         self.v_battery = tk.BooleanVar()
         self.v_idle, self.v_new, self.v_interval, self.v_age = (tk.StringVar() for _ in range(4))
@@ -142,6 +150,8 @@ class NyxPanel:
              "Protects files you are still downloading or using."),
             ("Effort", ttk.Combobox(tab, values=list(EFFORT.values()), textvariable=self.v_effort, width=34, state="readonly"), ""),
             ("Run on battery power", ttk.Checkbutton(tab, variable=self.v_battery), ""),
+            ("Smart sorting (TabPFN)", ttk.Checkbutton(tab, variable=self.v_smart),
+             "Learns from folders you organized yourself. " + _smart_message()),
         ]
         for i, (label, widget, hint) in enumerate(rows):
             ttk.Label(tab, text=label).grid(row=i * 2, column=0, sticky="w", pady=(8, 0), padx=(0, 20))
@@ -171,6 +181,7 @@ class NyxPanel:
         self.v_enabled.set(s.enabled)
         self.v_night.set(s.night_enabled)
         self.v_battery.set(s.run_on_battery)
+        self.v_smart.set(s.smart_sorting)
         self.v_idle.set(f"{s.idle_minutes:g}")
         self.v_new.set(str(s.min_new))
         self.v_interval.set(f"{s.interval_minutes:g}")
@@ -184,7 +195,7 @@ class NyxPanel:
             "enabled": self.v_enabled.get(), "night_enabled": self.v_night.get(), "run_on_battery": self.v_battery.get(),
             "idle_minutes": float(self.v_idle.get()), "min_new": int(float(self.v_new.get())),
             "interval_minutes": float(self.v_interval.get()), "min_age_hours": float(self.v_age.get()),
-            "night_start": int(self.v_start.get()[:2]), "night_end": int(self.v_end.get()[:2]),
+            "smart_sorting": self.v_smart.get(), "night_start": int(self.v_start.get()[:2]), "night_end": int(self.v_end.get()[:2]),
             "effort": "gentle" if self.v_effort.get().startswith("Gentle") else "full",
         }
 
@@ -289,7 +300,7 @@ class NyxPanel:
                 db = open_db(f.path)
                 try:
                     files, _ = scan(f.path, s.min_age_hours, DbHashCache(db))
-                    n = len(build_plan(f.path, files, load_categories(db), load_rules(db)))
+                    n = len(smart_plan(f.path, files, db))
                 finally:
                     db.close()
                 text = str(n)
@@ -335,7 +346,7 @@ class NyxPanel:
         db = open_db(path)
         try:
             files, skipped = scan(path, s.min_age_hours, DbHashCache(db))
-            moves = build_plan(path, files, load_categories(db), load_rules(db))
+            moves = smart_plan(path, files, db)
             return [(m.src.name, str(m.dst.relative_to(path).parent), m.reason) for m in moves], len(skipped)
         finally:
             db.close()

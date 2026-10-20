@@ -20,6 +20,7 @@ from .rules import category_for
 from .safety import UnsafePath, ensure_inside
 from .runner import run_once
 from .scanner import scan
+from .smart import smart_plan
 from .search import ask
 
 PAGE = Path(__file__).parent / "web" / "index.html"
@@ -67,7 +68,7 @@ class App:
         try:
             files, skipped = scan(self.root, self.min_age, self.hash_cache)
             sizes = {f.path: f.size for f in files}
-            moves = build_plan(self.root, files, load_categories(db), load_rules(db))
+            moves = smart_plan(self.root, files, db)
             plan = [
                 {"src": self.rel(m.src), "dst": self.rel(m.dst), "reason": m.reason, "size": sizes.get(m.src, 0)}
                 for m in moves
@@ -141,7 +142,7 @@ class App:
             db = open_db(self.root)
             try:
                 files, _ = scan(self.root, self.min_age, self.hash_cache)
-                moves = build_plan(self.root, files, load_categories(db), load_rules(db))
+                moves = smart_plan(self.root, files, db)
             finally:
                 db.close()
             res = apply_plan(self.root, moves) if moves else None

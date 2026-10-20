@@ -16,6 +16,8 @@ class Settings:
     min_age_hours: float = 24.0
     effort: str = "full"
     run_on_battery: bool = False
+    smart_sorting: bool = False
+    smart_threshold: float = 0.75
 
     def window(self) -> tuple[int, int]:
         return (self.night_start, self.night_end) if self.night_enabled else (0, 0)
@@ -23,7 +25,7 @@ class Settings:
 
 BOUNDS = {
     "idle_minutes": (1, 240), "night_start": (0, 23), "night_end": (0, 23), "min_new": (1, 1000),
-    "interval_minutes": (1, 120), "min_age_hours": (0, 720),
+    "interval_minutes": (1, 120), "min_age_hours": (0, 720), "smart_threshold": (0.5, 0.99),
 }
 
 

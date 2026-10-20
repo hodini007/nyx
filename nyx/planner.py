@@ -15,7 +15,8 @@ class Move:
 
 
 def build_plan(root: Path, files: list[FileInfo], analysis: dict[str, str] | None = None,
-               rules: dict[str, str] | None = None) -> list[Move]:
+               rules: dict[str, str] | None = None,
+               predictions: dict[Path, tuple[str, float]] | None = None) -> list[Move]:
     moves: list[Move] = []
     handled: set[Path] = set()
 
@@ -36,6 +37,10 @@ def build_plan(root: Path, files: list[FileInfo], analysis: dict[str, str] | Non
         learned = (rules or {}).get(f.path.suffix.lower())
         if learned:
             moves.append(Move(f.path, root / learned / f.name, f"learned rule: {f.path.suffix.lower()} files go to {learned}"))
+            continue
+        guess = (predictions or {}).get(f.path)
+        if guess:
+            moves.append(Move(f.path, root / guess[0] / f.name, f"looks like your files in {guess[0]}/ ({guess[1]:.0%} sure, TabPFN)"))
             continue
         cat = category_for(f)
         sub = (analysis or {}).get(f.sha256) if cat == "Screenshots" else None

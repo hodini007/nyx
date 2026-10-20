@@ -179,6 +179,7 @@ const FIELDS = [
   { k: "min_age_hours", t: "num", label: "Leave files alone until they are older than (hours)", min: 0, max: 720 },
   { k: "effort", t: "select", label: "Effort", options: [["full", "Full speed (all physical cores)"], ["gentle", "Gentle (a quarter of the threads)"]] },
   { k: "run_on_battery", t: "bool", label: "Run on battery power" },
+  { k: "smart_sorting", t: "bool", label: "Smart sorting (TabPFN)", help: "Learns from folders you organized yourself. Needs TabPFN installed and set up: nyx smart setup" },
 ];
 function buildSettings(values) {
   const rows = FIELDS.map(f => {
