@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -15,42 +16,67 @@ from .search import ask
 DEFAULT_ROOT = SANDBOX / "Downloads"
 
 
+def gentle_threads(args):
+    return max(1, (os.cpu_count() or 4) // 4) if args.gentle else None
+
+
 def print_schedule(root: Path, args) -> None:
     project = Path(__file__).resolve().parent.parent
-    cmd = f"{sys.executable} -m nyx.cli run --if-idle --root {root} --min-new {args.min_new} --window {args.window}"
-    print(f"""# ~/.config/systemd/user/nyx.service
+    py = sys.executable
+    target = args.os or {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux")
+    rest = f"--min-new {args.min_new} --window {args.window}"
+    flags = f'--root "{root}" {rest}'
+    win_flags = f'--root \\"{root}\\" {rest}'
+    if target == "linux":
+        print(f"""# 1. Autostart: save as ~/.config/systemd/user/nyx.service
 [Unit]
-Description=Nyx tidies your sandbox folder when the machine is idle
+Description=Nyx background tidy-up agent
 
 [Service]
-Type=oneshot
 WorkingDirectory={project}
-ExecStart={cmd}
+ExecStart={py} -m nyx.cli daemon {flags}
+Restart=on-failure
 Nice=19
-CPUSchedulingPolicy=idle
-IOSchedulingClass=idle
-
-# ~/.config/systemd/user/nyx.timer
-[Unit]
-Description=Check every 30 minutes whether Nyx should run
-
-[Timer]
-OnBootSec=10min
-OnUnitActiveSec=30min
-Persistent=true
 
 [Install]
-WantedBy=timers.target
+WantedBy=default.target
 
-# Install (copy each block into its file, then):
-#   systemctl --user daemon-reload
-#   systemctl --user enable --now nyx.timer
-# Ollama must be running for screenshots to be understood; otherwise they simply wait.""")
+#    then: systemctl --user daemon-reload && systemctl --user enable --now nyx.service
+
+# 2. Manual "run now" key. Hyprland (~/.config/hypr/hyprland.conf):
+#    bind = SUPER, N, exec, sh -c 'cd {project} && {py} -m nyx.cli run --root "{root}"'
+#    GNOME/KDE: Settings > Keyboard > Custom shortcut with that same command.""")
+    elif target == "macos":
+        print(f"""# 1. Autostart: save as ~/Library/LaunchAgents/com.nyx.agent.plist
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.nyx.agent</string>
+  <key>WorkingDirectory</key><string>{project}</string>
+  <key>ProgramArguments</key><array>
+    <string>{py}</string><string>-m</string><string>nyx.cli</string><string>daemon</string>
+    <string>--root</string><string>{root}</string>
+    <string>--min-new</string><string>{args.min_new}</string><string>--window</string><string>{args.window}</string>
+  </array>
+  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+</dict></plist>
+
+#    then: launchctl load ~/Library/LaunchAgents/com.nyx.agent.plist
+
+# 2. Manual "run now" key: open Shortcuts (or Automator Quick Action), add "Run Shell Script":
+#    cd "{project}" && "{py}" -m nyx.cli run --root "{root}"
+#    then assign a keyboard shortcut to it in System Settings > Keyboard > Keyboard Shortcuts.""")
+    else:
+        print(f"""REM 1. Autostart at login (run once in Command Prompt):
+schtasks /Create /TN "Nyx" /SC ONLOGON /TR "cmd /c cd /d \\"{project}\\" && \\"{py}\\" -m nyx.cli daemon {win_flags}"
+
+REM 2. Manual "run now" key: create a shortcut (right-click > New > Shortcut) whose target is
+REM    cmd /c cd /d "{project}" && "{py}" -m nyx.cli run --root "{root}"
+REM    then open its Properties and set a "Shortcut key" (for example Ctrl+Alt+N).""")
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="nyx", description="Tidy a sandbox folder. Never deletes, always undoable.")
-    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve", "run", "schedule"])
+    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve", "run", "daemon", "schedule"])
     p.add_argument("query", nargs="*", help="search words for the ask command")
     p.add_argument("--root", default=str(DEFAULT_ROOT), help="folder inside the playground sandbox")
     p.add_argument("--port", type=int, default=8765, help="dashboard port (serve command)")
@@ -59,6 +85,9 @@ def main(argv=None) -> int:
     p.add_argument("--min-new", type=int, default=10, help="run --if-idle: files waiting before a daytime run")
     p.add_argument("--window", default="1-5", help="run --if-idle: nightly hours, e.g. 1-5")
     p.add_argument("--idle-minutes", type=float, default=5.0, help="run --if-idle: minutes of inactivity required")
+    p.add_argument("--gentle", action="store_true", help="use only a quarter of the CPU threads so other apps stay responsive")
+    p.add_argument("--interval", type=float, default=5.0, help="daemon: minutes between idle checks")
+    p.add_argument("--os", choices=["linux", "macos", "windows"], help="schedule: print instructions for this system")
     p.add_argument("--min-age-hours", type=float, default=24.0, help="skip files modified more recently than this")
     args = p.parse_args(argv)
 
@@ -72,11 +101,19 @@ def main(argv=None) -> int:
         print_schedule(root, args)
         return 0
 
+    if args.command == "daemon":
+        from .daemon import run_daemon
+        from .runner import parse_window
+
+        return run_daemon(root, args.interval, min_age_hours=args.min_age_hours, min_new=args.min_new,
+                          window=parse_window(args.window), idle_minutes=args.idle_minutes,
+                          idle_known=args.idle_known, threads=gentle_threads(args))
+
     if args.command == "run":
         from .runner import parse_window, run_once
 
         r = run_once(root, args.min_age_hours, args.min_new, parse_window(args.window), args.idle_minutes,
-                     force=not args.if_idle, idle_known=args.idle_known)
+                     force=not args.if_idle, idle_known=args.idle_known, threads=gentle_threads(args))
         print(f"[{r['status']}] {r.get('trigger', '')} {r['note']}".replace("  ", " "))
         return 0
 

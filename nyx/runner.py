@@ -1,10 +1,10 @@
-import fcntl
 import time
 from pathlib import Path
 
 from .analyzer import ModelUnavailable, OllamaClient, analyze_screenshots, load_categories
 from .db import open_db
 from .executor import apply_plan
+from .lock import FileLock
 from .idle import in_window, machine_idle, user_idle_seconds
 from .learn import learn_from_corrections, load_rules
 from .planner import build_plan
@@ -19,12 +19,11 @@ def parse_window(text: str) -> tuple[int, int]:
 
 def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window: tuple[int, int] = (1, 5),
              idle_minutes: float = 5.0, force: bool = False, idle_known: bool = False,
-             client=None, idle_check=None, still_idle=None) -> dict:
+             threads: int | None = None, client=None, idle_check=None, still_idle=None) -> dict:
     db = open_db(root)
-    lock = open(root / ".nyx" / "run.lock", "w")
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
+    lock = FileLock(root / ".nyx" / "run.lock")
+    if not lock.acquire():
+        db.close()
         return {"status": "skipped", "note": "another run is already in progress"}
 
     def finish(status: str, note: str, trigger: str = "", analyzed: int = 0, moved: int = 0) -> dict:
@@ -67,7 +66,7 @@ def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window:
 
         analyzed, interrupted, model_down = 0, False, False
         if pending_shots:
-            client = client or OllamaClient()
+            client = client or OllamaClient(threads=threads)
             if client.available():
                 for f in pending_shots:
                     if not user_still_away():
@@ -94,5 +93,5 @@ def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window:
             note += "; stopped early because you came back"
         return finish("done", note, trigger, analyzed, len(moves))
     finally:
-        lock.close()
+        lock.release()
         db.close()

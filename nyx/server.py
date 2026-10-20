@@ -14,6 +14,7 @@ from .learn import MIN_HITS, learn_from_corrections, load_rules
 from .planner import ARCHIVE, build_plan
 from .rules import category_for
 from .safety import UnsafePath, ensure_inside
+from .runner import run_once
 from .scanner import scan
 from .search import ask
 
@@ -142,6 +143,21 @@ class App:
         threading.Thread(target=self._analyze, args=(client,), daemon=True).start()
         return self.job
 
+    def start_run(self) -> dict:
+        with self.lock:
+            if self.job["state"] == "running":
+                return self.job
+            self.job = {"state": "running", "done": 0, "total": 0, "message": "Understanding screenshots and tidying..."}
+        threading.Thread(target=self._run_now, daemon=True).start()
+        return self.job
+
+    def _run_now(self) -> None:
+        try:
+            r = run_once(self.root, self.min_age, force=True)
+            self.job = {"state": "done", "done": 0, "total": 0, "message": r["note"].capitalize() + "."}
+        except Exception as e:
+            self.job = {"state": "error", "done": 0, "total": 0, "message": str(e)}
+
     def _analyze(self, client) -> None:
         db = open_db(self.root)
         try:
@@ -231,6 +247,8 @@ def make_handler(app: App):
             if path == "/api/undo_move":
                 with app.lock:
                     return self._json({"restored": undo_move(app.root, int(body.get("id", -1)))})
+            if path == "/api/run":
+                return self._json(app.start_run())
             if path == "/api/analyze":
                 return self._json(app.start_analyze())
             if path == "/api/learn":

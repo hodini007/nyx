@@ -79,7 +79,8 @@ td, th { text-align: left; padding: 7px 8px; border-top: 1px solid var(--line); 
     </div>
     <div class="muted" id="skipped" style="margin-top:8px"></div>
     <div class="row">
-      <button class="primary" id="apply">Apply plan</button>
+      <button class="primary" id="runnow">Run now (analyze and tidy)</button>
+      <button id="apply">Apply plan only</button>
       <button id="undo">Undo last run</button>
       <span class="muted">Nothing is ever deleted. Old versions go to _archive.</span>
     </div>
@@ -174,13 +175,13 @@ function render(s) {
   fill($("after"), ...(after.length ? after : [h("div", { class: "muted" }, "Everything is already tidy.")]));
   $("skipped").textContent = s.skipped.length ? s.skipped.length + " recent file(s) left alone: " + s.skipped.join(", ") : "";
   $("apply").disabled = !s.plan.length;
-  if (!confirming) $("apply").textContent = "Apply plan";
+  if (!confirming) $("apply").textContent = "Apply plan only";
 
   $("shotinfo").textContent = s.screenshots + " screenshot(s) in the folder, " + s.analyzed + " understood so far.";
   const j = s.job;
   $("bar").style.width = j.total ? Math.round(100 * j.done / j.total) + "%" : (j.state === "done" ? "100%" : "0");
   $("jobmsg").textContent = j.state === "running" ? j.message + " " + j.done + "/" + j.total : j.message;
-  $("analyze").disabled = j.state === "running";
+  $("analyze").disabled = $("runnow").disabled = j.state === "running";
 
   fill($("rules"), ...(s.rules.length ? [document.createTextNode("Learned: " + s.rules.map(x => x.ext + " goes to " + x.folder + " (" + x.hits + (x.active ? ", active" : ", needs one more") + ")").join("; "))] : []));
 
@@ -212,6 +213,7 @@ $("apply").onclick = async () => {
   const r = await act("/api/apply", {});
   if (r) toast("Moved " + r.moved + " files. Undo is available.");
 };
+$("runnow").onclick = () => act("/api/run", {}, "Started");
 $("undo").onclick = () => act("/api/undo", {}, "Last run undone");
 $("analyze").onclick = () => act("/api/analyze", {}, "Started");
 $("learn").onclick = async () => { const r = await act("/api/learn", {}); if (r) toast("Learned from " + r.learned + " correction(s)"); };

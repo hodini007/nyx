@@ -56,6 +56,21 @@ class ServerTests(unittest.TestCase):
     def test_foreign_host_rejected(self):
         self.assertEqual(self.req("/api/state", host="evil.example.com")[0], 403)
 
+    def test_run_now_endpoint_starts_background_run(self):
+        import time
+        from unittest import mock
+
+        with mock.patch("nyx.server.run_once", return_value={"note": "analyzed 0, moved 0"}) as fake:
+            code, body = self.req("/api/run", {}, token=self.app.token)
+            self.assertEqual(code, 200)
+            for _ in range(50):
+                if self.app.job["state"] != "running":
+                    break
+                time.sleep(0.05)
+        self.assertTrue(fake.called)
+        self.assertEqual(self.app.job["state"], "done")
+        self.assertEqual(self.req("/api/run", {})[0], 403)
+
     def test_apply_then_undo_via_api(self):
         t = self.app.token
         expected = len(json.loads(self.req("/api/state")[1])["plan"])

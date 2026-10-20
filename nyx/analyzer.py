@@ -12,7 +12,7 @@ from .scanner import FileInfo
 
 MODEL = os.environ.get("NYX_MODEL", "gemma3:4b")
 HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-THREADS = int(os.environ.get("NYX_THREADS", max(1, (os.cpu_count() or 2) // 2)))
+THREADS = int(os.environ["NYX_THREADS"]) if os.environ.get("NYX_THREADS") else None
 LABELS = ["receipt", "error", "chat", "document", "code", "meme", "other"]
 PROMPT = (
     "You are sorting a screenshot. Reply with JSON only, in the form "
@@ -34,9 +34,16 @@ def _local_url(host: str) -> str:
 
 
 class OllamaClient:
-    def __init__(self, host: str = HOST, model: str = MODEL):
+    def __init__(self, host: str = HOST, model: str = MODEL, threads: int | None = THREADS):
         self.host = _local_url(host)
         self.model = model
+        self.threads = threads
+
+    def _options(self, num_predict: int) -> dict:
+        opts = {"num_predict": num_predict, "temperature": 0}
+        if self.threads:
+            opts["num_thread"] = self.threads
+        return opts
 
     def available(self) -> bool:
         try:
@@ -55,7 +62,7 @@ class OllamaClient:
                 "stream": False,
                 "format": "json",
                 "keep_alive": "5m",
-                "options": {"num_predict": 80, "temperature": 0, "num_thread": THREADS},
+                "options": self._options(80),
             }
         ).encode()
         req = urllib.request.Request(self.host + "/api/generate", body, {"Content-Type": "application/json"})
@@ -68,7 +75,7 @@ class OllamaClient:
 
     def generate_text(self, prompt: str) -> str:
         body = json.dumps(
-            {"model": self.model, "prompt": prompt, "stream": False, "keep_alive": "5m", "options": {"num_predict": 200, "temperature": 0, "num_thread": THREADS}}
+            {"model": self.model, "prompt": prompt, "stream": False, "keep_alive": "5m", "options": self._options(200)}
         ).encode()
         req = urllib.request.Request(self.host + "/api/generate", body, {"Content-Type": "application/json"})
         try:
