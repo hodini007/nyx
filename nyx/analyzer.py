@@ -12,6 +12,7 @@ from .scanner import FileInfo
 
 MODEL = os.environ.get("NYX_MODEL", "gemma3:4b")
 HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+THREADS = int(os.environ.get("NYX_THREADS", max(1, (os.cpu_count() or 2) // 2)))
 LABELS = ["receipt", "error", "chat", "document", "code", "meme", "other"]
 PROMPT = (
     "You are sorting a screenshot. Reply with JSON only, in the form "
@@ -53,8 +54,8 @@ class OllamaClient:
                 "images": [base64.b64encode(data).decode()],
                 "stream": False,
                 "format": "json",
-                "keep_alive": "30m",
-                "options": {"num_predict": 80, "temperature": 0},
+                "keep_alive": "5m",
+                "options": {"num_predict": 80, "temperature": 0, "num_thread": THREADS},
             }
         ).encode()
         req = urllib.request.Request(self.host + "/api/generate", body, {"Content-Type": "application/json"})
@@ -67,7 +68,7 @@ class OllamaClient:
 
     def generate_text(self, prompt: str) -> str:
         body = json.dumps(
-            {"model": self.model, "prompt": prompt, "stream": False, "keep_alive": "30m", "options": {"num_predict": 200, "temperature": 0}}
+            {"model": self.model, "prompt": prompt, "stream": False, "keep_alive": "5m", "options": {"num_predict": 200, "temperature": 0, "num_thread": THREADS}}
         ).encode()
         req = urllib.request.Request(self.host + "/api/generate", body, {"Content-Type": "application/json"})
         try:
