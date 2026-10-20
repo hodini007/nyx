@@ -53,6 +53,8 @@ class OllamaClient:
                 "images": [base64.b64encode(data).decode()],
                 "stream": False,
                 "format": "json",
+                "keep_alive": "30m",
+                "options": {"num_predict": 80, "temperature": 0},
             }
         ).encode()
         req = urllib.request.Request(self.host + "/api/generate", body, {"Content-Type": "application/json"})
@@ -64,7 +66,9 @@ class OllamaClient:
         return parse_answer(raw)
 
     def generate_text(self, prompt: str) -> str:
-        body = json.dumps({"model": self.model, "prompt": prompt, "stream": False}).encode()
+        body = json.dumps(
+            {"model": self.model, "prompt": prompt, "stream": False, "keep_alive": "30m", "options": {"num_predict": 200, "temperature": 0}}
+        ).encode()
         req = urllib.request.Request(self.host + "/api/generate", body, {"Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=300) as r:
