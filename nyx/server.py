@@ -76,11 +76,16 @@ class App:
                 "report": self.report(db),
                 "history": history,
                 "rules": rules,
+                "last_run": self.last_run(db),
                 "analyzed": db.execute("SELECT COUNT(*) FROM analysis").fetchone()[0],
                 "screenshots": sum(1 for f in files if category_for(f) == "Screenshots"),
             }
         finally:
             db.close()
+
+    def last_run(self, db) -> dict | None:
+        row = db.execute("SELECT ts, trigger, analyzed, moved, note FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+        return dict(zip(("ts", "trigger", "analyzed", "moved", "note"), row)) if row else None
 
     def report(self, db) -> dict | None:
         row = db.execute("SELECT batch, MAX(ts) FROM moves WHERE batch=(SELECT batch FROM moves ORDER BY id DESC LIMIT 1)").fetchone()

@@ -158,6 +158,8 @@ function render(s) {
     stat(r.tidied, "files tidied"), stat(r.archived, "old versions and duplicates archived"),
     stat(bytes(r.freed), "space freed in the main folder"), stat(r.by_model, "screenshots sorted by the model")),
     h("div", { class: "muted", style: "margin-top:8px" }, new Date(r.when * 1000).toLocaleString()));
+  if (s.last_run) $("report").append(h("div", { class: "muted", style: "margin-top:6px" },
+    "Last automatic run " + new Date(s.last_run.ts * 1000).toLocaleString() + " (" + (s.last_run.trigger || "n/a") + "): " + s.last_run.note));
 
   $("nbefore").textContent = s.before.length;
   fill($("before"), ...s.before.map(f => h("div", {}, f.name)));

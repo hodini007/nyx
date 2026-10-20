@@ -15,12 +15,50 @@ from .search import ask
 DEFAULT_ROOT = SANDBOX / "Downloads"
 
 
+def print_schedule(root: Path, args) -> None:
+    project = Path(__file__).resolve().parent.parent
+    cmd = f"{sys.executable} -m nyx.cli run --if-idle --root {root} --min-new {args.min_new} --window {args.window}"
+    print(f"""# ~/.config/systemd/user/nyx.service
+[Unit]
+Description=Nyx tidies your sandbox folder when the machine is idle
+
+[Service]
+Type=oneshot
+WorkingDirectory={project}
+ExecStart={cmd}
+Nice=19
+CPUSchedulingPolicy=idle
+IOSchedulingClass=idle
+
+# ~/.config/systemd/user/nyx.timer
+[Unit]
+Description=Check every 30 minutes whether Nyx should run
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+
+# Install (copy each block into its file, then):
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now nyx.timer
+# Ollama must be running for screenshots to be understood; otherwise they simply wait.""")
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="nyx", description="Tidy a sandbox folder. Never deletes, always undoable.")
-    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve"])
+    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve", "run", "schedule"])
     p.add_argument("query", nargs="*", help="search words for the ask command")
     p.add_argument("--root", default=str(DEFAULT_ROOT), help="folder inside the playground sandbox")
     p.add_argument("--port", type=int, default=8765, help="dashboard port (serve command)")
+    p.add_argument("--if-idle", action="store_true", help="run: only act when the machine is idle and enough files are waiting")
+    p.add_argument("--idle-known", action="store_true", help="run: the caller (e.g. hypridle) guarantees the machine is idle")
+    p.add_argument("--min-new", type=int, default=10, help="run --if-idle: files waiting before a daytime run")
+    p.add_argument("--window", default="1-5", help="run --if-idle: nightly hours, e.g. 1-5")
+    p.add_argument("--idle-minutes", type=float, default=5.0, help="run --if-idle: minutes of inactivity required")
     p.add_argument("--min-age-hours", type=float, default=24.0, help="skip files modified more recently than this")
     args = p.parse_args(argv)
 
@@ -29,6 +67,18 @@ def main(argv=None) -> int:
     except UnsafePath as e:
         print(e, file=sys.stderr)
         return 2
+
+    if args.command == "schedule":
+        print_schedule(root, args)
+        return 0
+
+    if args.command == "run":
+        from .runner import parse_window, run_once
+
+        r = run_once(root, args.min_age_hours, args.min_new, parse_window(args.window), args.idle_minutes,
+                     force=not args.if_idle, idle_known=args.idle_known)
+        print(f"[{r['status']}] {r.get('trigger', '')} {r['note']}".replace("  ", " "))
+        return 0
 
     if args.command == "serve":
         from .server import serve

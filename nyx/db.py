@@ -18,4 +18,8 @@ def init_db(db: sqlite3.Connection) -> sqlite3.Connection:
         " description TEXT, model TEXT, ts REAL)"
     )
     db.execute("CREATE TABLE IF NOT EXISTS rules (ext TEXT PRIMARY KEY, folder TEXT, hits INTEGER)")
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS runs (id INTEGER PRIMARY KEY, ts REAL, status TEXT, trigger TEXT,"
+        " analyzed INTEGER, moved INTEGER, note TEXT)"
+    )
     return db
