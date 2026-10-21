@@ -77,8 +77,14 @@ listener {
 }
 ```
 `--idle-known` means "the desktop says I am idle" (AC power and CPU load are still checked), and `nyx interrupt`
-asks a running tidy-up to stop after its current file when you come back. This is written and unit-tested but has
-not been run through a real `hypridle` session yet. Other options:
+asks a running tidy-up to stop after its current file when you come back.
+
+What was tested: the Nyx side, with the real model. Running exactly the `on-timeout` command and then `nyx interrupt`
+one second into the run finished the current screenshot, moved the files that were ready, left the other screenshots
+for later and reported "stopped early because you came back". What was **not** observed: `hypridle` itself delivering
+the idle event. On the test machine Hyprland reported windows holding an idle inhibitor (a video playing in Chrome,
+and the Claude desktop app), and while any window holds one the compositor sends no idle events to any program. So
+event-driven idle is unreliable whenever such an app is open, and the night window is the dependable path. Other options:
 - **Night window only:** turn off daytime runs by relying on the night window, so the daemon wakes once a day.
 - **Windows:** Task Scheduler has a built-in "start only when the computer is idle" trigger.
 
@@ -159,6 +165,8 @@ support the DigitalOcean category later.
 - TabPFN's weights have a non-commercial license and need a free Prior Labs account to download.
 - Only Linux has been tested. The Windows and macOS idle, power and window code is written but untested.
   If idle time cannot be read (for example on Hyprland), automatic runs happen only in the night window.
+- Event-driven idle through `hypridle`/`swayidle` is blocked while any app holds a Wayland idle inhibitor (video
+  playback, some desktop apps). Nyx's own run and stop logic was tested; the desktop event delivery was not.
 - Search is keyword matching over the saved descriptions, not semantic search.
 - Version grouping is based on file names. In testing, `dhaka-breath-v4-kaggle.ipynb` was not grouped with
   `dhaka-breath.ipynb`, `-v1`, `-v2` and `-v3` because of the extra `-kaggle` suffix.
