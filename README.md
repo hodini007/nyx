@@ -45,15 +45,34 @@ This project only makes sense with an open-weight model running locally.
 - **Local model only.** The model client refuses any host other than localhost.
 
 ## How it works
-```
- timer (daemon, every few minutes)        control panel (Tkinter)  |  CLI  |  browser detail view
-              |                                         \              |             /
-   idle? AC power? night window?  ------------------->  engine (same code for all three)
-              |
-   scan folder -> rules (duplicates, versions, types) -> planner -> executor (+ undo log, SQLite)
-                                  |
-                      screenshots only -> Gemma 3 via Ollama (local) -> category + description
-                      loose files (optional) -> TabPFN (local) -> "looks like your files in Work/ (87% sure)"
+```mermaid
+flowchart TD
+    subgraph Triggers
+        D["Background daemon<br/>wakes every few minutes"]
+        H["hypridle or swayidle<br/>optional idle event"]
+        M["Run now<br/>control panel, CLI or hotkey"]
+    end
+
+    D --> G
+    H --> G
+    M --> P
+    G{"Cheap gate<br/>AC power, CPU quiet,<br/>idle or night window,<br/>enough files waiting?"}
+    G -- "no" --> S["Skip and sleep<br/>no scan, no model"]
+    G -- "yes" --> P
+
+    subgraph Engine ["Engine, everything runs locally"]
+        P["Scan the watched folder<br/>loose files only, older than 24 h"]
+        P --> R["Rules, no AI<br/>duplicates by hash<br/>versions by name<br/>types by extension"]
+        R --> V["Screenshots only: Gemma 3 via Ollama<br/>category and description<br/>cached by file hash"]
+        V --> T["Optional: TabPFN<br/>predicts which of your own<br/>folders a file belongs in"]
+        T --> L["Planner builds the moves<br/>with a reason for each"]
+        L --> X["Executor moves files<br/>never deletes"]
+        X --> U[("Undo log<br/>SQLite in the folder's .nyx")]
+    end
+
+    B["You come back<br/>nyx interrupt"] -. "stop after the current file" .-> V
+    UI["Control panel, CLI,<br/>browser detail view"] -. "preview, apply, undo" .-> L
+    UI -.-> U
 ```
 The daemon wakes every few minutes and decides whether to work. It runs only when the machine is on AC power
 (unless you allow battery), the CPU is quiet, and you have been idle for the configured time, or inside the night
