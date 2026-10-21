@@ -5,6 +5,7 @@ from .analyzer import ModelUnavailable, OllamaClient, analyze_screenshots, load_
 from .db import DbHashCache, open_db
 from .executor import apply_plan
 from .lock import FileLock
+from . import logfile
 from .idle import in_window, machine_idle, user_idle_seconds
 from .learn import learn_from_corrections, load_rules
 from .planner import build_plan
@@ -42,7 +43,8 @@ def interrupt_requested(since: float) -> bool:
 def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window: tuple[int, int] = (1, 5),
              idle_minutes: float = 5.0, force: bool = False, idle_known: bool = False,
              threads: int | None = None, auto_move: bool = True, allow_battery: bool = False,
-             client=None, idle_check=None, still_idle=None) -> dict:
+             client=None, idle_check=None, still_idle=None, log=None) -> dict:
+    log = log or logfile.write
     started = time.time()
     if not force:
         # Cheapest checks first: a skipped check must cost almost nothing (no scan, no planning, no model).
@@ -90,21 +92,29 @@ def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window:
             secs = user_idle_seconds()
             return in_window(time.localtime().tm_hour, window) if secs is None else secs >= 30
 
+        log(f"[{root.name}] run started ({trigger}): {len(files)} file(s), {len(pending_shots)} new screenshot(s)")
         analyzed, interrupted, model_down = 0, False, False
         if pending_shots:
             client = client or OllamaClient(threads=threads)
             if client.available():
-                for f in pending_shots:
+                log(f"[{root.name}] reading {len(pending_shots)} screenshot(s) with {getattr(client, 'model', 'the model')}")
+                for i, f in enumerate(pending_shots, 1):
                     if not user_still_away():
                         interrupted = True
+                        log(f"[{root.name}] you came back, stopping after screenshot {i - 1} of {len(pending_shots)}")
                         break
+                    t0 = time.time()
                     try:
                         analyzed += analyze_screenshots(db, [f], client)
+                        log(f"[{root.name}] screenshot {i}/{len(pending_shots)} {f.name}: "
+                            f"{load_categories(db).get(f.sha256, '?')} ({time.time() - t0:.0f} s)")
                     except ModelUnavailable:
                         model_down = True
+                        log(f"[{root.name}] the model stopped responding; remaining screenshots will wait")
                         break
             else:
                 model_down = True
+                log(f"[{root.name}] model not reachable; {len(pending_shots)} screenshot(s) will wait for it")
 
         analysis, note_extra = load_categories(db), ""
         ready = [f for f in files if not (category_for(f) == "Screenshots" and f.sha256 not in analysis)]
@@ -125,6 +135,7 @@ def run_once(root: Path, min_age_hours: float = 24.0, min_new: int = 10, window:
             note += f"; {waiting} screenshot(s) waiting for the model" if model_down or interrupted else ""
         if interrupted:
             note += "; stopped early because you came back"
+        log(f"[{root.name}] run finished: {note}")
         return finish("done", note, trigger, analyzed, moved)
     finally:
         lock.release()

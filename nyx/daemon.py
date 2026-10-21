@@ -8,6 +8,7 @@ from pathlib import Path
 from .config import load_settings, settings_path, threads_for
 from .idle import WAIT_NIGHT, seconds_until_window
 from .lock import FileLock
+from .logfile import default_log
 from .registry import Folder, _file as folders_file, config_dir, load_folders
 from .runner import run_once
 
@@ -76,9 +77,10 @@ def next_sleep(lines: list[str], interval_minutes: float, window: tuple[int, int
 
 
 def run_daemon(targets=None, overrides: dict | None = None, max_ticks: int | None = None, sleep=watch_sleep,
-               log=print, lock_dir: Path | None = None, **extra) -> int:
+               log=None, lock_dir: Path | None = None, **extra) -> int:
     """Wake every few minutes and give each watched folder a chance to run; run_once decides whether the machine
     is idle enough to do any work. Settings and the folder list are re-read each cycle."""
+    log = log or default_log
     overrides = dict(overrides or {})
     targets = targets or load_folders
     base = _dir(lock_dir)
@@ -120,7 +122,7 @@ def run_daemon(targets=None, overrides: dict | None = None, max_ticks: int | Non
                         lines.append((str(f.path), "error", f"[error] {f.path.name}: {e}"))
             for key, status, line in lines:
                 if status != "skipped" or last.get(key) != line:
-                    log(time.strftime("%H:%M:%S ") + line)
+                    log(line)
                 last[key] = line
             ticks += 1
             if max_ticks is not None and ticks >= max_ticks:

@@ -81,6 +81,24 @@ class PanelTests(unittest.TestCase):
         self.pump(1.5)
         self.assertEqual(sorted(p.name for p in self.dl.iterdir() if p.is_file()), ["a.txt", "b.docx", "c.pdf"])
 
+    def test_log_tab_shows_new_lines_and_panel_notes(self):
+        from nyx import logfile
+
+        logfile.write("hello from the daemon")
+        self.panel.refresh_log(force=True)
+        shown = self.panel.log_text.get("1.0", "end")
+        self.assertIn("hello from the daemon", shown)
+        self.panel.note("clicked something")
+        self.panel.refresh_log()
+        self.assertIn("[panel] clicked something", self.panel.log_text.get("1.0", "end"))
+
+    def test_log_clear(self):
+        from nyx import logfile
+
+        logfile.write("to be cleared")
+        self.panel.on_clear_log()
+        self.assertNotIn("to be cleared", self.panel.log_text.get("1.0", "end"))
+
     def test_save_settings_roundtrip(self):
         self.panel.v_idle.set("12")
         self.panel.v_start.set("22:00")

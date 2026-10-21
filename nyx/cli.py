@@ -191,7 +191,7 @@ def all_folders_command(args, ov: dict, saved) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="nyx", description="Tidy a sandbox folder. Never deletes, always undoable.")
-    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve", "run", "daemon", "schedule", "app", "folders", "gui", "smart", "interrupt"])
+    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve", "run", "daemon", "schedule", "app", "folders", "gui", "smart", "interrupt", "log"])
     p.add_argument("query", nargs="*", help="search words for the ask command")
     p.add_argument("--root", default=None, help="a watched folder (default: the demo sandbox; run and daemon default to all watched folders)")
     p.add_argument("--auto", action="store_true", help="folders add: move files automatically from the start")
@@ -214,6 +214,12 @@ def main(argv=None) -> int:
         return folders_command(args)
     if args.command == "smart":
         return smart_command(args)
+    if args.command == "log":
+        from . import logfile
+
+        lines = logfile.tail().splitlines()[-60:]
+        print("\n".join(lines) if lines else f"The log is empty ({logfile.log_path()}).")
+        return 0
     if args.command == "interrupt":
         from .runner import request_interrupt
 

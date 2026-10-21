@@ -7,6 +7,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from . import logfile
 from .analyzer import OllamaClient, load_categories
 from .config import load_settings, save_settings, threads_for
 from .daemon import daemon_running, start_background, stop_background
@@ -58,6 +59,7 @@ class NyxPanel:
         self._folders_tab()
         self._schedule_tab()
         self._activity_tab()
+        self._log_tab()
         self.status = tk.StringVar(value="Ready.")
         bar = ttk.Frame(self.win)
         bar.pack(fill="x", padx=12, pady=8)
@@ -69,6 +71,8 @@ class NyxPanel:
         self.refresh_activity()
         self.poll()
         self.tick()
+        self.log_tick()
+        self.note('control panel opened')
 
     # ---- dialogs (overridable in tests)
     def confirm(self, message: str) -> bool:
@@ -175,6 +179,52 @@ class NyxPanel:
         self.act.pack(fill="both", expand=True)
         ttk.Button(tab, text="Refresh", command=self.refresh_activity).pack(anchor="w", pady=8)
 
+    def _log_tab(self) -> None:
+        tab = ttk.Frame(self.tabs, padding=12)
+        self.tabs.add(tab, text="Log")
+        top = ttk.Frame(tab)
+        top.pack(fill="x")
+        ttk.Label(top, text=f"Live log: {logfile.log_path()}", style="Muted.TLabel").pack(side="left")
+        ttk.Button(top, text="Clear", command=self.on_clear_log).pack(side="right")
+        box = ttk.Frame(tab)
+        box.pack(fill="both", expand=True, pady=(8, 0))
+        self.log_text = tk.Text(box, wrap="none", height=18, state="disabled", font="TkFixedFont")
+        ys = ttk.Scrollbar(box, orient="vertical", command=self.log_text.yview)
+        xs = ttk.Scrollbar(box, orient="horizontal", command=self.log_text.xview)
+        self.log_text.configure(yscrollcommand=ys.set, xscrollcommand=xs.set)
+        self.log_text.grid(row=0, column=0, sticky="nsew")
+        ys.grid(row=0, column=1, sticky="ns")
+        xs.grid(row=1, column=0, sticky="ew")
+        box.rowconfigure(0, weight=1)
+        box.columnconfigure(0, weight=1)
+        self._log_stamp = None
+
+    def note(self, message: str) -> None:
+        logfile.write("[panel] " + message)
+
+    def refresh_log(self, force: bool = False) -> None:
+        stamp = logfile.stamp()
+        if not force and stamp == self._log_stamp:
+            return
+        self._log_stamp = stamp
+        at_bottom = self.log_text.yview()[1] >= 0.98
+        text = logfile.tail() or "(nothing logged yet)\n"
+        self.log_text.configure(state="normal")
+        self.log_text.delete("1.0", "end")
+        self.log_text.insert("end", text)
+        self.log_text.configure(state="disabled")
+        if at_bottom:
+            self.log_text.see("end")
+
+    def log_tick(self) -> None:
+        self.refresh_log()
+        self.win.after(1500, self.log_tick)
+
+    def on_clear_log(self) -> None:
+        if self.confirm("Clear the log?"):
+            logfile.clear()
+            self.refresh_log(force=True)
+
     # ---- settings form
     def load_form(self) -> None:
         s = load_settings()
@@ -206,6 +256,7 @@ class NyxPanel:
             self.warn(f"Could not save: please check the numbers.\n{e}")
             return
         self.load_form()
+        self.note("settings saved")
         self.save_msg.config(text="Saved. It takes effect on the next check.")
 
     # ---- background work
@@ -315,6 +366,7 @@ class NyxPanel:
             self.warn(str(e))
             return False
         self.refresh_folders()
+        self.note(f"now watching {f.path} (preview only)")
         self.status.set(f"Now watching {f.path.name} in preview mode. Nothing moves until you switch it to automatic.")
         return True
 
@@ -327,6 +379,7 @@ class NyxPanel:
         sel = self.selected()
         if sel and self.confirm(f"Stop watching {sel.name}?\nYour files stay exactly where they are."):
             remove_folder(sel)
+            self.note(f"stopped watching {sel}")
             self.refresh_folders()
 
     def on_toggle_mode(self) -> None:
@@ -339,6 +392,7 @@ class NyxPanel:
                 "Nothing is deleted, and every run can be undone."):
             return
         set_auto_move(sel, not auto)
+        self.note(f"{sel.name}: " + ("preview only" if auto else "moves automatically"))
         self.refresh_folders()
 
     def _plan(self, path: Path):
@@ -354,6 +408,7 @@ class NyxPanel:
     def on_preview(self) -> None:
         sel = self.selected()
         if sel:
+            self.note(f"previewing {sel.name}")
             self.work(f"Looking at {sel.name}...", lambda: self._plan(sel), lambda r: self.show_preview(sel, *r))
 
     def show_preview(self, folder: Path, rows, skipped: int) -> None:
@@ -379,6 +434,7 @@ class NyxPanel:
                 "Nothing is deleted and you can undo the whole run."):
             return
         s = load_settings()
+        self.note(f"tidy now requested for {sel.name}")
 
         def job():
             return run_once(sel, min_age_hours=s.min_age_hours, min_new=s.min_new, window=s.window(),
@@ -394,6 +450,7 @@ class NyxPanel:
     def on_undo(self) -> None:
         sel = self.selected()
         if sel and self.confirm(f"Put back everything moved by the last run in {sel.name}?"):
+            self.note(f"undo requested for {sel.name}")
             self.work("Undoing...", lambda: undo_last(sel), lambda n: (self.status.set(f"Restored {n} file(s) in {sel.name}."), self.refresh_folders(), self.refresh_activity()))
 
     def on_details(self) -> None:
@@ -408,11 +465,13 @@ class NyxPanel:
             if not self.confirm("Stop the background service? Automatic tidying will pause until you start it again."):
                 return
             stop_background()
+            self.note("background service stop requested")
         else:
             if not load_folders():
                 self.warn("Add a folder first. The service has nothing to watch yet.")
                 return
             start_background()
+            self.note("background service start requested")
         self.win.after(700, self.update_service)
 
     # ---- activity
