@@ -90,8 +90,7 @@ def _idle_linux() -> float | None:
         info = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
         if info.get("IdleHint") == "yes" and int(info.get("IdleSinceHint", 0)) > 0:
             return max(0.0, time.time() - int(info["IdleSinceHint"]) / 1e6)
-        if info.get("IdleHint") == "no":
-            return 0.0
+        # IdleHint=no is not evidence: compositors such as Hyprland never update it, so it stays "no" forever.
     return None
 
 
@@ -115,16 +114,32 @@ def in_window(hour: int, window: tuple[int, int]) -> bool:
     return start <= hour < end if start <= end else hour >= start or hour < end
 
 
+WAIT_NIGHT = "waiting for the night window"
+
+
+def seconds_until_window(window: tuple[int, int], now: time.struct_time | None = None) -> int | None:
+    """0 inside the window, seconds until it opens otherwise, None when there is no window."""
+    start, end = window
+    if start == end:
+        return None
+    t = now or time.localtime()
+    if in_window(t.tm_hour, window):
+        return 0
+    return (start * 3600 - (t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec)) % 86400
+
+
 def machine_idle(idle_minutes: float, window: tuple[int, int], hour: int | None = None,
-                 allow_battery: bool = False) -> tuple[bool, str]:
+                 allow_battery: bool = False, assume_idle: bool = False) -> tuple[bool, str]:
     """Conservative: runs when idle is known, or at night when the system cannot tell."""
     if not allow_battery and not on_ac_power():
         return False, "on battery"
     if not load_ok():
         return False, "machine is busy"
+    if assume_idle:
+        return True, "idle reported by the desktop"
     secs = user_idle_seconds()
     if secs is not None:
         ok = secs >= idle_minutes * 60
         return ok, "user idle" if ok else "user is active"
     night = in_window(time.localtime().tm_hour if hour is None else hour, window)
-    return night, "night window (idle time unknown)" if night else "idle time unknown, waiting for the night window"
+    return night, "night window (idle time unknown)" if night else f"idle time unknown, {WAIT_NIGHT}"

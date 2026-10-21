@@ -60,6 +60,28 @@ The daemon wakes every few minutes and decides whether to work. It runs only whe
 window, and when enough files are waiting. If you come back mid-run it stops after the current screenshot.
 Settings and the watched-folder list are re-read every cycle, so edits apply without a restart.
 
+## How idle checking works, and cheaper ways to trigger it
+The daemon wakes every few minutes, but a check that decides "not now" is nearly free: it looks at AC power, CPU
+load and idle time first, and does no scanning, planning or model work until those pass (about 3 ms for the idle
+probe on the test machine). If the desktop cannot report idle time at all, as on Hyprland, the daemon does not keep
+waking up for nothing. It sleeps until the night window opens, and wakes early if you change a setting or the
+folder list.
+
+Better than polling is letting the desktop tell Nyx when you go idle. `nyx schedule --os linux` prints this snippet
+for `hypridle` (Hyprland) and the same idea works with `swayidle`:
+```
+listener {
+    timeout = 300
+    on-timeout = sh -c 'cd ~/path/to/nyx && python3 -m nyx.cli run --if-idle --idle-known'
+    on-resume  = sh -c 'cd ~/path/to/nyx && python3 -m nyx.cli interrupt'
+}
+```
+`--idle-known` means "the desktop says I am idle" (AC power and CPU load are still checked), and `nyx interrupt`
+asks a running tidy-up to stop after its current file when you come back. This is written and unit-tested but has
+not been run through a real `hypridle` session yet. Other options:
+- **Night window only:** turn off daytime runs by relying on the night window, so the daemon wakes once a day.
+- **Windows:** Task Scheduler has a built-in "start only when the computer is idle" trigger.
+
 ## Setup
 1. Python 3.10 or newer. The control panel needs Tkinter (Ubuntu/Debian: `sudo apt install python3-tk`;
    the python.org installers for Windows and macOS include it).
@@ -120,6 +142,14 @@ Everything inside `playground/` can be used without registering it (`python3 -m 
 - TabPFN smart sorting: the model loads in about 4 seconds and fitting plus predicting takes under a second
   for small folders, on the same CPU.
 - A GPU, or Apple silicon, is much faster.
+
+## Possible future: a remote model (not implemented)
+Nyx is local-only today and does not use any remote or cloud model. Because Nyx talks to Ollama over its HTTP API,
+running Gemma on a GPU server you control (for example a DigitalOcean GPU Droplet) should work by forwarding the
+server's port to localhost over SSH, which keeps Nyx's localhost-only rule intact. That would make screenshot
+analysis much faster, but it uploads your screenshots to that server, so it would have to be an explicit opt-in.
+This has **not been built or tested** and is not part of the challenge entry. It is noted here as a path that could
+support the DigitalOcean category later.
 
 ## Honest limitations
 - Smart sorting was only checked on a tiny set: 15 labeled files in 3 folders, leave-one-out. It was right 10 times

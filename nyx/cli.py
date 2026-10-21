@@ -62,7 +62,15 @@ WantedBy=default.target
 
 # 2. Manual "run now" key. Hyprland (~/.config/hypr/hyprland.conf):
 #    bind = SUPER, N, exec, sh -c 'cd {project} && {py} -m nyx.cli run'
-#    GNOME/KDE: Settings > Keyboard > Custom shortcut with that same command.""")
+#    GNOME/KDE: Settings > Keyboard > Custom shortcut with that same command.
+
+# 3. Optional, event-driven idle with no polling (Hyprland: add to ~/.config/hypr/hypridle.conf):
+#    listener {{
+#        timeout = 300
+#        on-timeout = sh -c 'cd {project} && {py} -m nyx.cli run --if-idle --idle-known'
+#        on-resume = sh -c 'cd {project} && {py} -m nyx.cli interrupt'
+#    }}
+#    sway users can do the same with swayidle. Nyx still checks AC power and CPU load first.""")
     elif target == "macos":
         print(f"""# 1. Autostart: save as ~/Library/LaunchAgents/com.nyx.agent.plist
 <?xml version="1.0" encoding="UTF-8"?>
@@ -176,7 +184,7 @@ def all_folders_command(args, ov: dict, saved) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="nyx", description="Tidy a sandbox folder. Never deletes, always undoable.")
-    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve", "run", "daemon", "schedule", "app", "folders", "gui", "smart"])
+    p.add_argument("command", choices=["plan", "apply", "undo", "analyze", "ask", "changes", "learn", "serve", "run", "daemon", "schedule", "app", "folders", "gui", "smart", "interrupt"])
     p.add_argument("query", nargs="*", help="search words for the ask command")
     p.add_argument("--root", default=None, help="a watched folder (default: the demo sandbox; run and daemon default to all watched folders)")
     p.add_argument("--auto", action="store_true", help="folders add: move files automatically from the start")
@@ -199,6 +207,12 @@ def main(argv=None) -> int:
         return folders_command(args)
     if args.command == "smart":
         return smart_command(args)
+    if args.command == "interrupt":
+        from .runner import request_interrupt
+
+        request_interrupt()
+        print("Stop requested: running tidy-ups will finish their current file and stop.")
+        return 0
     if args.command == "gui":
         try:
             from .gui import run_gui

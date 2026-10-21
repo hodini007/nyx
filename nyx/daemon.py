@@ -5,9 +5,10 @@ import sys
 import time
 from pathlib import Path
 
-from .config import load_settings, threads_for
+from .config import load_settings, settings_path, threads_for
+from .idle import WAIT_NIGHT, seconds_until_window
 from .lock import FileLock
-from .registry import Folder, config_dir, load_folders
+from .registry import Folder, _file as folders_file, config_dir, load_folders
 from .runner import run_once
 
 
@@ -50,7 +51,31 @@ def stop_background() -> bool:
         return False
 
 
-def run_daemon(targets=None, overrides: dict | None = None, max_ticks: int | None = None, sleep=time.sleep,
+def watch_sleep(seconds: float, step: float = 20.0) -> None:
+    """Sleep, but wake early if the settings or the watched-folder list change."""
+    paths = [settings_path(), folders_file()]
+
+    def stamp():
+        return tuple(p.stat().st_mtime if p.exists() else 0 for p in paths)
+
+    first, end = stamp(), time.time() + seconds
+    while time.time() < end:
+        time.sleep(min(step, max(end - time.time(), 0)))
+        if stamp() != first:
+            return
+
+
+def next_sleep(lines: list[str], interval_minutes: float, window: tuple[int, int], now=None) -> float:
+    """Seconds to sleep. When this desktop cannot report idle time and every folder is just waiting for the
+    night window, there is nothing to check until the window opens."""
+    base = interval_minutes * 60
+    if lines and all(WAIT_NIGHT in line for line in lines):
+        until = seconds_until_window(window, now)
+        return min(max(base, until if until is not None else 6 * 3600), 12 * 3600)
+    return base
+
+
+def run_daemon(targets=None, overrides: dict | None = None, max_ticks: int | None = None, sleep=watch_sleep,
                log=print, lock_dir: Path | None = None, **extra) -> int:
     """Wake every few minutes and give each watched folder a chance to run; run_once decides whether the machine
     is idle enough to do any work. Settings and the folder list are re-read each cycle."""
@@ -100,7 +125,7 @@ def run_daemon(targets=None, overrides: dict | None = None, max_ticks: int | Non
             ticks += 1
             if max_ticks is not None and ticks >= max_ticks:
                 break
-            sleep(interval * 60)
+            sleep(next_sleep([line for _, _, line in lines], interval, overrides.get("window", s.window())))
     except KeyboardInterrupt:
         pass
     finally:
