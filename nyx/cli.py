@@ -131,6 +131,13 @@ def smart_command(args) -> int:
     return 2
 
 
+def root_auto_move(root: Path) -> bool:
+    """A registered folder uses its own setting; a demo-sandbox folder (never registered) moves automatically."""
+    from .registry import load_folders
+
+    return next((f.auto_move for f in load_folders() if f.path.resolve() == root), True)
+
+
 def folders_command(args) -> int:
     from . import registry
 
@@ -246,7 +253,7 @@ def main(argv=None) -> int:
 
         kwargs = dict(min_age_hours=saved.min_age_hours, min_new=saved.min_new, window=saved.window(),
                       idle_minutes=saved.idle_minutes, threads=threads_for(saved.effort),
-                      auto_move=saved.auto_move, allow_battery=saved.run_on_battery)
+                      auto_move=root_auto_move(root), allow_battery=saved.run_on_battery)
         kwargs.update({k: v for k, v in ov.items() if k != "interval_minutes"})
         if args.if_idle and not saved.enabled:
             print("[skipped] automatic tidying is switched off in settings")

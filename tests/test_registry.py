@@ -115,3 +115,27 @@ class MoverHardeningTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CliRunTests(unittest.TestCase):
+    def test_run_with_explicit_root_moves_files(self):
+        import shutil
+        import time
+
+        from nyx.cli import main
+
+        folder = SANDBOX / "CliRunTest"
+        shutil.rmtree(folder, ignore_errors=True)
+        folder.mkdir(parents=True)
+        try:
+            old = time.time() - 5 * 86400
+            for i in range(3):
+                f = folder / f"n{i}.txt"
+                f.write_text(str(i))
+                os.utime(f, (old, old))
+            self.assertEqual(main(["run", "--root", str(folder)]), 0)
+            self.assertEqual(len(list((folder / "Documents").glob("*.txt"))), 3)
+            self.assertEqual(main(["undo", "--root", str(folder)]), 0)
+            self.assertEqual(len(list(folder.glob("*.txt"))), 3)
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
