@@ -197,6 +197,11 @@ support the DigitalOcean category later.
 the scheduler, the settings, smart sorting (with a stand-in model), the web API and the control panel (GUI tests skip themselves when there is no display).
 Tests use a temporary config folder and never touch your real settings.
 
+## License
+Nyx's code is released under the [MIT License](LICENSE). The models it uses are separate and keep their own terms:
+Gemma 3 is under Google's Gemma Terms of Use, and the TabPFN weights are under a non-commercial license from
+Prior Labs. Nyx does not redistribute either one; you download them yourself.
+
 ## Challenge entry
 Hacktoberfest Open-Source AI Challenge, Week 3: Slow and Steady.
 Open-weight models at the core, both running locally:
